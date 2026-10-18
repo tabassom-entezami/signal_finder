@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned by commit (OpenSSF Scorecard)
+        with:
+          persist-credentials: false  # no GITHUB_TOKEN in .git/config for later steps (uvx downloads code)
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6, pinned by commit
+        with:
+          python-version: "3.13"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run pytest -W error
+      - run: uv lock --check  # uv.lock matches pyproject.toml
+      - name: pip-audit (known vulnerabilities in locked packages)
+        run: |
+          uv export --locked --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/req.txt"
+          uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/req.txt" --no-deps --disable-pip --progress-spinner off
+      - run: uv run mypy src tests  # typecheck last

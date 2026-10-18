@@ -1,0 +1,48 @@
+# Public repository: only the generic engine is shared. Everything else in this folder (research, data,
+# notes and tooling) stays on the owner's machine and is never committed. Anything new is private by default.
+/*
+!/.gitignore
+!/.github/
+!/README.md
+!/pyproject.toml
+!/uv.lock
+!/.python-version
+!/.env.example
+!/src/
+!/tests/
+
+# Private parts of the engine and their tests
+/src/signal_engine/strategy/
+/src/signal_engine/validation/
+/src/signal_engine/backtest/engine.py
+/src/signal_engine/backtest/synthetic.py
+/src/signal_engine/data/pit.py
+/src/signal_engine/data/reserved.py
+/src/signal_engine/data/eurconv.py
+/src/signal_engine/data/binance_vision.py
+/src/signal_engine/research_db.py
+/src/signal_engine/research_cli.py
+/tests/test_ops_tools.py
+/tests/test_agent_evals.py
+/tests/test_network_hosts.py
+/tests/test_export_public.py
+/tests/test_m1_oos.py
+/tests/test_research_db.py
+/tests/test_b_spot.py
+/tests/test_binance_vision.py
+/tests/test_engine.py
+/tests/test_eurconv.py
+/tests/test_papersim.py
+/tests/test_pit.py
+/tests/test_reserved.py
+/tests/test_stats.py
+/tests/test_trials_chain.py
+
+# Build and local files
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
