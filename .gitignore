@@ -8,6 +8,10 @@
 !/uv.lock
 !/.python-version
 !/.env.example
+!/ARCHITECTURE.md
+!/HOW_WE_USE_AI.md
+!/BUILT_WITH_CLAUDE.md
+!/AGENT_TEAM.md
 !/src/
 !/tests/
 

@@ -56,6 +56,13 @@ uv run mypy src tests  # typecheck
 
 Copy `.env.example` to `.env`. Every setting is optional: `LOG_LEVEL` (default `INFO`), `DATA_DIR` (default `data`).
 
+## More
+
+- [ARCHITECTURE.md](ARCHITECTURE.md): how the system fits together and which parts are public
+- [HOW_WE_USE_AI.md](HOW_WE_USE_AI.md): the role of Claude in the product
+- [BUILT_WITH_CLAUDE.md](BUILT_WITH_CLAUDE.md): how the project is built with Claude Code
+- [AGENT_TEAM.md](AGENT_TEAM.md): the agent team by name, how they work together, their safety rules and how the owner uses them
+
 ## How this was built: an AI agent team
 
 The project is built by one founder working with a team of about thirty specialist AI agents (Claude), each

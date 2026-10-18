@@ -32,7 +32,7 @@ OBSERVATION_GAP_MS = 15_000
 PRE_CLOSE_MS = 120_000  # no orders in the 2 minutes before a 1D close (AFM marking-the-close case)
 MAINTENANCE_BLOCK_MS = 12 * 3_600_000
 MAX_SPREAD_BPS = 30.0
-DEPTH_MULTIPLE = 20.0  # depth within 1 % must be >= 20 x the order (Trekt Merge 7)
+DEPTH_MULTIPLE = 20.0  # depth within 1 % must be >= 20 x the order
 DAY_MS = 86_400_000
 
 log = logging.getLogger(__name__)
