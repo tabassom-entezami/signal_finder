@@ -6,9 +6,10 @@ parameters, its test results or when anything goes live.
 
 ## The short version
 
-Deterministic code does the maths. Claude reviews a finished candidate and gives a
+Deterministic code does the maths. In the design below, Claude reviews a finished candidate and gives a
 second opinion, in a fixed format, with its sources named. Claude never computes,
-changes or invents a number, and it never places an order.
+changes or invents a number, and it never places an order. This layer is designed but not built yet: it is
+built only once a base strategy passes its own test, and it is kept only if it beats the code alone (section 6).
 
 ```
  market data ──► deterministic engine ──► candidate (all numbers fixed)
@@ -96,6 +97,13 @@ Claude's label is treated as an unproven feature until the data says otherwise:
 - Schema failures, rejected claims, latency and cost per signal are tracked.
 
 If the label does not add measurable value, the engine runs without it.
+
+**Status: designed, not built.** A meta-labeler needs a base strategy whose decisions it can improve, and the
+first strategy failed its out-of-sample test. The model layer is built only after a base strategy passes its own
+test and its decisions have been logged with their outcomes for a while. It is then tested once, under rules
+written down before the test, against the code-only engine on the same decisions. If it does not beat the code
+alone, it is deleted, not tuned until it looks better. A losing strategy with a well-written explanation of why
+it lost is still a losing strategy.
 
 ## 7. What Claude does not do
 

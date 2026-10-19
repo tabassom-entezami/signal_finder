@@ -126,3 +126,20 @@ A single model answering alone can be confident and wrong. Splitting the work in
 roles that must cite evidence, read and challenge each other, and pass an independent
 check catches many of those errors before they reach code. The guards make the most
 important rules hold even when the model forgets them.
+
+The research rules exist for a second reason: the people running a test are the easiest to fool. After a bad
+result it is tempting to change a parameter, drop a coin, move the window or promote the best variant. So
+every rule, constant and pass bar is written down and hashed before the test data is opened, the test runs
+once, and every variant tried is counted as a trial. When the first strategy failed, the record said FAIL, and
+that verdict could not be argued away afterwards.
+
+Three rules keep that process honest without letting it grow past its purpose:
+
+- **Every piece of work names its purpose.** It either tests a hypothesis (a counted trial or a pre-registered
+  test) or adds a capability that something or someone uses (a gate, a job or a user, plus the command that
+  shows it working). Work that only makes the architecture nicer is not built.
+- **No shortcuts on evidence.** Collected data is kept, validated and learned from. Every number is checked
+  against the data by someone who did not produce it, and nothing is guessed.
+- **The search has an end.** The ten-week window for a new strategy family, fixed before the first test, is
+  kept. Any later search needs a new, dated decision and ends on 31 March 2027 at the latest, or earlier if the
+  Sharpe ratio a new rule would need to clear the deflated test rises above 2.

@@ -53,14 +53,34 @@ One rule, written down and frozen before the test, with every constant fixed:
 
 The last row is the lesson. A short in-sample window looked good. Seven years of unseen data did not.
 
+### Why it failed: the signal, not the plumbing
+
+- **Too little edge, even without the account layer.** A probabilistic Sharpe ratio of 0.98 over this window
+  needs an annual Sharpe ratio of about 0.8 (the fat tails of these returns raise the bar). The trend signal
+  alone, before the account-level loss limits, reached about 0.23. The best of the 27 grid variants reached
+  0.14, and the rule at 1 × costs reached 0.03.
+- **The account layer made it worse, but it is not the cause.** The loss limits and stops took the result from
+  about +0.23 to −0.13. Removing them still leaves the signal far below the bar.
+- **The rule's own exits lost too.** Trades closed by the trend signal, not by a stop, lost money in total.
+- **The trend idea failed in a second form.** A breakout variant tested alongside, as a counted sensitivity
+  trial, scored −0.27 a year.
+- **So execution work cannot rescue it.** Better fills, tighter cost modelling or a different stop would turn
+  a losing rule into a cleaner losing rule. They help measure an edge; they do not create one.
+
 ### What happened next
 
 - The rule is closed, and nothing is traded.
 - Further rule families were searched on a wider coin set, with every variant counted as a trial. None has an
   edge after costs yet. The best deflated Sharpe ratio is 0.16 across 75 counted trials (0.12 at the upper count
   of 117), far below the 0.95 bar.
-- The next step is a forward paper-trading loop. It logs each prediction before its outcome is known, so any
-  future claim can be checked against a record made in advance.
+- **Stop rule.** The rules fixed before this test allow one new strategy family, pre-registered within ten
+  weeks of this result, so by late December 2026. Any search after that needs a new, dated decision, and every
+  search for a directional trading rule ends on 31 March 2027 at the latest, or earlier if the Sharpe ratio a
+  new rule would need to clear our deflated test on the available history rises above 2. Every variant tried
+  counts as a trial, so each new attempt raises that bar.
+- **In either case** the next piece of work is a forward prediction log, not built yet. Each prediction will
+  be written down and hashed before its outcome is known, then scored, so the record can be checked and cannot
+  be edited afterwards. These will be paper predictions only: no money is traded.
 
 ## Why this result can be trusted
 

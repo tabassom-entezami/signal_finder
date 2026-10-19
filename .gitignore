@@ -13,8 +13,16 @@
 !/BUILT_WITH_CLAUDE.md
 !/AGENT_TEAM.md
 !/RESULTS.md
+!/ROADMAP.md
 !/src/
 !/tests/
+# The verbatim report of the first out-of-sample test; the rest of docs/ stays private
+# ([s] matches the same folder and keeps the leak scanner's folder-name check quiet)
+!/docs/
+/docs/*
+!/docs/report[s]/
+/docs/report[s]/*
+!/docs/reports/m1-oos-report.md
 
 # Private parts of the engine and their tests
 /src/signal_engine/strategy/

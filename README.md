@@ -1,11 +1,15 @@
 # signal_finder
 
 A crypto swing-trading signal engine (BTC/ETH, 4H/1D). Deterministic quant code computes the regime, the score
-and the risk of every signal; a language model acts only as an evidence-checked meta-labeler on top. Signals are
-generic, versioned and meant to be published with a public track record.
+and the risk of every signal; a language model is planned to act only as an evidence-checked meta-labeler on
+top, and only if it beats the code alone. Signals are generic, versioned and meant to be published with a public
+track record.
 
-**Status:** early development. This repository holds the generic engine and its tests. The strategies, their
-validation, research notes, data, results and the project's internal decision records are kept private.
+**Status:** research stage; nothing is traded. This repository holds the generic engine and its tests: data
+fetchers and recorders, storage and a paper simulator. The first frozen strategy failed its
+pre-registered out-of-sample test after realistic execution costs, so it was not deployed; the result is
+published in [RESULTS.md](RESULTS.md). Strategies, validation code, data, research notes and internal decision
+records stay private.
 
 **Author:** Tabassom Entezami
 
@@ -50,6 +54,9 @@ uv run mypy src tests  # typecheck
 - `src/signal_engine/` — the generic engine: settings, JSON logging, Parquet/DuckDB storage, data fetchers
   and recorders (Bitvavo candles and order books, ECB rates, CFTC COT, market listings, news feeds), the
   trade outcome resolver and a paper simulator that fills against real order books
+
+  Exchange names here identify public market-data APIs these tools read. They are not an endorsement, an
+  affiliation or a statement of where anyone trades.
 - `tests/` — pytest suite (runs offline)
 
 ## Configuration
@@ -58,6 +65,8 @@ Copy `.env.example` to `.env`. Every setting is optional: `LOG_LEVEL` (default `
 
 ## More
 
+- [RESULTS.md](RESULTS.md): the first out-of-sample test, a FAIL, reported in full
+- [ROADMAP.md](ROADMAP.md): where the project stands, what comes next and the hours spent so far
 - [ARCHITECTURE.md](ARCHITECTURE.md): how the system fits together and which parts are public
 - [HOW_WE_USE_AI.md](HOW_WE_USE_AI.md): the role of Claude in the product
 - [BUILT_WITH_CLAUDE.md](BUILT_WITH_CLAUDE.md): how the project is built with Claude Code
