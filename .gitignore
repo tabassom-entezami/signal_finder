@@ -12,6 +12,7 @@
 !/HOW_WE_USE_AI.md
 !/BUILT_WITH_CLAUDE.md
 !/AGENT_TEAM.md
+!/RESULTS.md
 !/src/
 !/tests/
 
@@ -26,6 +27,7 @@
 /src/signal_engine/data/binance_vision.py
 /src/signal_engine/research_db.py
 /src/signal_engine/research_cli.py
+/src/signal_engine/records/
 /tests/test_ops_tools.py
 /tests/test_agent_evals.py
 /tests/test_network_hosts.py
@@ -41,6 +43,7 @@
 /tests/test_reserved.py
 /tests/test_stats.py
 /tests/test_trials_chain.py
+/tests/test_records.py
 
 # Build and local files
 __pycache__/

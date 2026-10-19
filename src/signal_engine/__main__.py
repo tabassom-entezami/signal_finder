@@ -12,7 +12,7 @@ from types import ModuleType
 
 from signal_engine import __version__
 from signal_engine.data.bitvavo import fetch_daily, store_daily
-from signal_engine.data.book_recorder import record_books
+from signal_engine.data.book_recorder import compact_books, record_books
 from signal_engine.data.cot import record_cot
 from signal_engine.data.ecb import fetch_ecb, store_ecb
 from signal_engine.data.markets import record_markets
@@ -55,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     books.add_argument("--end", type=_utc_datetime, default=None,
                        help="UTC, e.g. 2026-10-18T06:00:00Z (default: record until stopped)")
     books.add_argument("--data-dir", type=Path, default=None, help="data root (default: settings.data_dir)")
+    compact = sub.add_parser("compact-books", help="join each finished hour of recorded books into one file")
+    compact.add_argument("--data-dir", type=Path, default=None, help="data root (default: settings.data_dir)")
     ecb_cmd = sub.add_parser("fetch-ecb", help="fetch ECB EUR/USD reference rates into Parquet")
     ecb_cmd.add_argument(
         "--start", required=True, type=date.fromisoformat, help="first fix date, e.g. 2019-03-01"
@@ -105,6 +107,9 @@ def main(argv: list[str] | None = None) -> int:
         root = args.data_dir or settings.data_dir
         _write_pid(root / "ops" / "record-books.pid")  # the heartbeat checks it without /bin/ps
         record_books(args.symbols, args.interval, args.start, args.end, root)
+    if args.command == "compact-books":
+        joined = compact_books(args.data_dir or settings.data_dir, datetime.now(UTC))
+        log.info("compact-books done", extra={"hours": len(joined), "files": [str(p) for p in joined]})
     if args.command == "fetch-ecb":
         fixes = fetch_ecb(args.start, args.end)
         paths = store_ecb(fixes, args.data_dir or settings.data_dir)

@@ -1,11 +1,13 @@
 import json
 import logging
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import ccxt
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from signal_engine.__main__ import main
@@ -240,3 +242,218 @@ def test_without_end_the_recorder_resumes_after_a_sleep_and_logs_the_gap(tmp_pat
     gaps = [json.loads(line) for line in (tmp_path / "ops/book-gaps.jsonl").read_text().splitlines()]
     assert len(gaps) == 1 and gaps[0]["missed_slots"] >= 100
     assert any(r["tick"] >= START_MS + 600_000 for r in _rows(tmp_path))  # recording resumed after the wake
+
+
+HOUR = START.replace(minute=0)  # 02:00, the hour the fixtures record in
+HOUR_DIR = ("raw", "bitvavo_books", "2026", "10", "18", "02")
+
+
+def _record(tmp_path: Path, start: datetime, seconds: float, fake: FakeExchange | None = None) -> Path:
+    clock = FakeClock(start)
+    record_books(["BTC/EUR", "ETH/USDC"], 5, start, start + timedelta(seconds=seconds), tmp_path,
+                 exchange=fake or FakeExchange(clock), clock=clock.now, sleep=clock.sleep)
+    return tmp_path.joinpath(*HOUR_DIR)
+
+
+def test_compact_hour_keeps_every_row_including_error_rows(tmp_path: Path) -> None:
+    clock = FakeClock(START)
+    fake = FakeExchange(clock, book_errors={(2, "ETH/USDC"): ccxt.NetworkError("timeout")})
+    record_books(["BTC/EUR", "ETH/USDC"], 5, START, START + timedelta(seconds=15), tmp_path,
+                 exchange=fake, clock=clock.now, sleep=clock.sleep)
+    folder = tmp_path.joinpath(*HOUR_DIR)
+    before = _rows(tmp_path)
+    path = book_recorder.compact_hour(folder)
+    assert path == folder / "hour-2026101802.parquet"
+    assert sorted(p.name for p in folder.iterdir()) == ["hour-2026101802.parquet"]
+    assert _rows(tmp_path) == before  # same rows, same order (tick, symbol)
+    assert sum(r["error"] is not None for r in _rows(tmp_path)) == 1
+    assert pq.ParquetFile(path).metadata.row_group(0).column(0).compression == "ZSTD"
+    assert book_recorder.compact_hour(folder) is None  # nothing left to join
+
+
+def test_rerun_after_a_stop_between_rename_and_removals_adds_no_row_twice(tmp_path: Path) -> None:
+    folder = _record(tmp_path, START, 10)
+    kept = {p.name: p.read_bytes() for p in folder.glob("part-*.parquet")}
+    book_recorder.compact_hour(folder)
+    for name, data in kept.items():  # the removals never happened
+        (folder / name).write_bytes(data)
+    _record(tmp_path, START + timedelta(seconds=10), 5)  # one more tick lands in the same hour
+    book_recorder.compact_hour(folder)
+    rows = _rows(tmp_path)
+    assert [r["tick"] for r in rows] == [START_MS + k * 5000 for k in (0, 0, 1, 1, 2, 2)]
+    assert sorted(p.name for p in folder.iterdir()) == ["hour-2026101802.parquet"]
+
+
+def test_compact_books_skips_unfinished_hours_and_non_date_folders(tmp_path: Path) -> None:
+    folder = _record(tmp_path, START, 10)
+    odd = folder.parent / "09x"
+    odd.mkdir()
+    (odd / "part-1.parquet").write_bytes(next(folder.glob("part-*.parquet")).read_bytes())
+    late = HOUR + timedelta(hours=1, seconds=30)  # a running writer may still add a tick
+    assert book_recorder.compact_books(tmp_path, late) == []
+    assert book_recorder.compact_books(tmp_path, HOUR + timedelta(hours=1, minutes=1)) == [
+        folder / "hour-2026101802.parquet"
+    ]
+    assert (odd / "part-1.parquet").exists()
+
+
+def test_a_read_back_that_differs_keeps_the_tick_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = _record(tmp_path, START, 10)
+    real = pq.read_table
+
+    def lossy(path: Any, **kw: Any) -> pa.Table:
+        table = real(path, **kw)
+        return table.slice(1) if str(path).endswith(".tmp") else table
+
+    monkeypatch.setattr(pq, "read_table", lossy)
+    with pytest.raises(RuntimeError, match="differs"):
+        book_recorder.compact_hour(folder)
+    assert sorted(p.name for p in folder.iterdir()) == [f"part-{START_MS + k * 5000}.parquet" for k in (0, 1)]
+
+
+def test_duplicate_tick_and_symbol_rows_are_refused(tmp_path: Path) -> None:
+    folder = _record(tmp_path, START, 5)
+    (folder / f"part-{START_MS + 1}.parquet").write_bytes((folder / f"part-{START_MS}.parquet").read_bytes())
+    with pytest.raises(RuntimeError, match="duplicate"):
+        book_recorder.compact_hour(folder)
+    assert len(list(folder.glob("part-*.parquet"))) == 2 and not list(folder.glob("hour-*"))
+
+
+def test_recorder_joins_the_hour_it_leaves_and_keeps_the_current_one(tmp_path: Path) -> None:
+    start = HOUR + timedelta(minutes=59, seconds=50)
+    _record(tmp_path, start, 20)
+    past, current = tmp_path.joinpath(*HOUR_DIR), tmp_path.joinpath(*HOUR_DIR[:-1], "03")
+    assert sorted(p.name for p in past.iterdir()) == ["hour-2026101802.parquet"]
+    assert len(list(current.glob("part-*.parquet"))) == 2
+    assert len(_rows(tmp_path)) == 8  # 4 ticks x 2 symbols, none lost
+
+
+def test_a_failed_join_never_stops_recording(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(folder: Path) -> Path:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(book_recorder, "compact_hour", broken)
+    start = HOUR + timedelta(minutes=59, seconds=55)
+    _record(tmp_path, start, 15)
+    assert len(list(tmp_path.joinpath(*HOUR_DIR).glob("part-*.parquet"))) == 1  # kept, not joined
+    assert len(_rows(tmp_path)) == 6
+
+
+def test_cli_compact_books_joins_finished_hours(tmp_path: Path) -> None:
+    folder = _record(tmp_path, START, 10)
+    assert main(["compact-books", "--data-dir", str(tmp_path)]) == 0
+    assert sorted(p.name for p in folder.iterdir()) == ["hour-2026101802.parquet"]
+
+
+@pytest.mark.parametrize("change", ["extra column", "missing column"])
+def test_a_tick_file_with_another_schema_stops_the_join(tmp_path: Path, change: str) -> None:
+    folder = _record(tmp_path, START, 10)
+    first = folder / f"part-{START_MS}.parquet"
+    table = pq.read_table(first)
+    table = table.append_column("extra", pa.array([1] * table.num_rows)) if change == "extra column" \
+        else table.drop_columns(["error"])
+    pq.write_table(table, first)
+    with pytest.raises(RuntimeError, match="another schema"):
+        book_recorder.compact_hour(folder)
+    assert len(list(folder.glob("part-*.parquet"))) == 2 and not list(folder.glob("hour-*"))
+
+
+def test_a_corrupt_tick_file_stops_the_join_and_keeps_every_file(tmp_path: Path) -> None:
+    folder = _record(tmp_path, START, 10)
+    first = folder / f"part-{START_MS}.parquet"
+    first.write_bytes(first.read_bytes()[:100])
+    with pytest.raises(pa.ArrowInvalid):
+        book_recorder.compact_hour(folder)
+    assert len(list(folder.glob("part-*.parquet"))) == 2 and not list(folder.glob("hour-*"))
+
+
+def test_only_old_temporary_files_are_cleared(tmp_path: Path) -> None:
+    folder = _record(tmp_path, START, 10)
+    old, live = folder / ".hour-2026101802-1.tmp", folder / ".hour-2026101802-2.tmp"
+    old.write_bytes(b"x")
+    live.write_bytes(b"x")
+    os.utime(old, (0, 0))  # left by a run stopped long ago
+    book_recorder.compact_hour(folder)
+    assert not old.exists() and live.exists()  # another run's file in progress is never touched
+
+
+def test_joined_rows_are_sorted_by_tick_then_symbol(tmp_path: Path) -> None:
+    clock = FakeClock(START)
+    record_books(["ETH/USDC", "BTC/EUR"], 5, START, START + timedelta(seconds=10), tmp_path,
+                 exchange=FakeExchange(clock), clock=clock.now, sleep=clock.sleep)
+    path = book_recorder.compact_hour(tmp_path.joinpath(*HOUR_DIR))
+    assert path is not None
+    rows = pq.read_table(path).select(["tick", "symbol"]).to_pylist()
+    assert [(r["tick"] - START_MS, r["symbol"]) for r in rows] == [
+        (0, "BTC/EUR"), (0, "ETH/USDC"), (5000, "BTC/EUR"), (5000, "ETH/USDC")]
+
+
+def _gaps(root: Path) -> list[dict[str, Any]]:
+    path = root / "ops/book-gaps.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def _restart(root: Path, now: datetime, seconds: float, start: datetime = START) -> FakeClock:
+    """The launchd job restarts with the same fixed --start while `now` is later."""
+    clock = FakeClock(now)
+    record_books(["BTC/EUR", "ETH/USDC"], 5, start, now + timedelta(seconds=seconds), root,
+                 exchange=FakeExchange(clock), clock=clock.now, sleep=clock.sleep)
+    return clock
+
+
+def test_a_restart_counts_only_its_own_downtime_as_a_gap(tmp_path: Path) -> None:
+    _record(tmp_path, START, 15)  # ticks +0, +5, +10
+    _restart(tmp_path, START + timedelta(minutes=10), 10)
+    assert _gaps(tmp_path) == [{"from": (START + timedelta(seconds=15)).isoformat(),
+                                "to": (START + timedelta(minutes=10)).isoformat(), "missed_slots": 117}]
+    keys = [(r["tick"], r["symbol"]) for r in _rows(tmp_path)]
+    assert len(keys) == len(set(keys)) and max(keys)[0] == START_MS + 605_000  # same grid, nothing twice
+
+
+def test_a_restart_reads_the_last_tick_from_a_joined_hour_and_leftover_parts(tmp_path: Path) -> None:
+    folder = _record(tmp_path, START, 15)
+    kept = (folder / f"part-{START_MS + 10_000}.parquet").read_bytes()
+    book_recorder.compact_hour(folder)
+    (folder / f"part-{START_MS + 10_000}.parquet").write_bytes(kept)  # a stop between rename and removal
+    (folder.parent / "05").mkdir()  # an empty newer folder is skipped
+    assert book_recorder._last_tick_ms(tmp_path, START_MS) == START_MS + 10_000
+
+
+def test_ticks_only_before_start_are_ignored(tmp_path: Path) -> None:
+    _record(tmp_path, START, 10)
+    later = START + timedelta(hours=1)
+    _restart(tmp_path, later, 10, start=later)
+    assert _gaps(tmp_path) == []
+    assert min(r["tick"] for r in _rows(tmp_path) if r["tick"] >= int(later.timestamp() * 1000)) == int(
+        later.timestamp() * 1000)
+
+
+def test_an_off_grid_tick_resumes_on_the_next_grid_slot(tmp_path: Path) -> None:
+    folder = _record(tmp_path, START, 5)
+    first = folder / f"part-{START_MS}.parquet"
+    (folder / f"part-{START_MS + 2_500}.parquet").write_bytes(first.read_bytes())
+    resume = book_recorder._resume_tick(tmp_path, START, 5, lambda: START)
+    assert resume == START + timedelta(seconds=5)
+
+
+def test_a_tick_ahead_of_the_clock_is_never_written_again(tmp_path: Path) -> None:
+    _record(tmp_path, START + timedelta(minutes=30), 5)  # a tick from a clock that ran ahead
+    _restart(tmp_path, START, 30 * 60 + 10)
+    keys = [(r["tick"], r["symbol"]) for r in _rows(tmp_path)]
+    assert len(keys) == len(set(keys))  # the tick on disk was not written again
+    assert _gaps(tmp_path) == [] and min(k[0] for k in keys) == START_MS + 1_800_000
+
+
+def test_a_short_restart_under_the_gap_threshold_writes_no_row(tmp_path: Path) -> None:
+    _record(tmp_path, START, 15)  # last tick +10
+    _restart(tmp_path, START + timedelta(seconds=20), 5)  # one slot (+15) missed
+    assert _gaps(tmp_path) == []
+
+
+def test_a_fully_joined_newest_hour_still_gives_the_last_tick(tmp_path: Path) -> None:
+    folder = _record(tmp_path, START, 15)
+    book_recorder.compact_hour(folder)
+    assert not list(folder.glob("part-*.parquet"))  # only the hour file is left
+    assert book_recorder._last_tick_ms(tmp_path, START_MS) == START_MS + 10_000
