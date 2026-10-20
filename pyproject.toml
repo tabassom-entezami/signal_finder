@@ -34,7 +34,9 @@ addopts = "-q"
 [tool.ruff]
 line-length = 110
 target-version = "py313"
-extend-exclude = ["docs", "tasks"]  # documents and plans are not product code
+extend-exclude = ["docs", "tasks", "data"]  # documents, plans and data are not product code
+# The .gitignore is the public allow-list, so honouring it would skip every private module and test.
+respect-gitignore = false
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S"]
@@ -46,5 +48,5 @@ strict = true
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["pyarrow.*", "duckdb.*", "ccxt", "ccxt.*"]
+module = ["pyarrow.*", "duckdb.*", "ccxt", "ccxt.*", "pandas", "pandas.*"]
 ignore_missing_imports = true

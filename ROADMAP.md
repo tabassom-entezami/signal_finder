@@ -1,6 +1,6 @@
 # Roadmap
 
-Status on 19 October 2026. Own capital first, BTC and ETH spot, daily bars, one part-time founder.
+Status on 20 October 2026. Own capital first, BTC and ETH spot, daily bars, one part-time founder.
 
 Learn for free, prove with data, then risk a little. The first strategy failed its one-shot test, so no money is
 traded. The next step is a new strategy family with published evidence, tested the same way. Paid signals come
@@ -19,6 +19,8 @@ Measured from the Claude Code session logs. A pause of more than 30 minutes coun
 | Code foundation: Python 3.13, CI, point-in-time daily candle pipeline, order-book recorder | done |
 | Engine: data, backtest, one shared outcome resolver, validation statistics | done |
 | First out-of-sample test (16 October 2026) | **FAIL**, see [RESULTS.md](RESULTS.md) |
+| Wider search for a new rule family, learning only (17 to 19 October 2026) | done: no family with an edge after costs |
+| Test of the test on synthetic markets, with and without a planted edge (20 October 2026) | done: it rarely passes pure noise, but misses a real edge about one time in three; the gap is under review |
 
 The rule was frozen and hash-committed before any out-of-sample data was touched. It ran once on 2,617 days it had
 never seen: Sharpe −0.13 a year after doubled costs, probabilistic Sharpe ratio 0.36 (0.98 needed). The rule is

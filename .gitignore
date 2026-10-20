@@ -52,6 +52,7 @@
 /tests/test_stats.py
 /tests/test_trials_chain.py
 /tests/test_records.py
+/tests/test_synthetic.py
 
 # Build and local files
 __pycache__/

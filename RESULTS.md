@@ -73,6 +73,10 @@ The last row is the lesson. A short in-sample window looked good. Seven years of
 - Further rule families were searched on a wider coin set, with every variant counted as a trial. None has an
   edge after costs yet. The best deflated Sharpe ratio is 0.16 across 75 counted trials (0.12 at the upper count
   of 117), far below the 0.95 bar.
+- **The test itself was tested (20 October 2026).** On synthetic markets with no edge, the search-and-deflate gate
+  rarely passed noise. On synthetic markets with a planted edge of the size it needs, it found the edge only about
+  two times in three, and rarely when the edge sits in a single signal. That gap is under review before the next
+  go/no-go on 31 October 2026.
 - **Stop rule.** The rules fixed before this test allow one new strategy family, pre-registered within ten
   weeks of this result, so by late December 2026. Any search after that needs a new, dated decision, and every
   search for a directional trading rule ends on 31 March 2027 at the latest, or earlier if the Sharpe ratio a
