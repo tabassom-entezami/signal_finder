@@ -464,8 +464,8 @@ def reproduce_dev(seed: int, out: Path, mc_paths: int = DEV_PATHS) -> dict[str, 
     """The whole M1 path on synthetic bars: rule, backtest, gates, Monte Carlo, result hash.
 
     Needs no real data, rules file or trial log; the account values come from the environment. The same
-    seed and values give the same `result_sha256` on the same platform and `uv.lock` (pinned on macOS arm64);
-    other platforms match the golden body in the tests (verdict, gate pass/fail and values).
+    seed and values give the same `result_sha256` on any machine with this `uv.lock` (the pinned test checks
+    it on macOS and Linux).
     """
     bars = _rounded_bars(synthetic_bars(seed, DEV_DAYS))
     body = {

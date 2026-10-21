@@ -1,7 +1,5 @@
 import json
 import math
-import platform
-import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -20,10 +18,10 @@ DEMO_ENV = {
     "SAVINGS_PCT": "0.03",
     "OP_EVENTS": "[[0.01, 0.1, 0.5]]",
 }
-# Pinned on macOS arm64 with this uv.lock; other platforms must match the golden body below.
+# Same on macOS arm64 and Linux x86_64 (CI) with this uv.lock.
 EXPECTED_SHA256 = "89d912618a3cf9ae43a2661249a885a89c152fd74cd16ed8ce327a4d8b43863d"
-PINNED_PLATFORM = sys.platform == "darwin" and platform.machine() == "arm64"
-# The whole seed-7 body without its hashes; floats match to rel 1e-6, everything else exactly.
+# The whole seed-7 body without its hashes; floats match to rel 1e-6, everything else exactly. Checked before
+# the hash, so a red run names every field that moved.
 GOLDEN = Path(__file__).parent / "golden" / "reproduce_dev_seed7.json"
 # PBO counts winning splits out of C(16, 8) = 12,870, so one flipped split moves it by 7.8e-5; a 1-ulp change
 # of the raw bars moved it by up to 17 splits (1.3e-3), far from the 0.20 limit.
@@ -72,9 +70,6 @@ def test_the_synthetic_end_to_end_run_matches_the_golden_body(body: dict[str, An
     assert not found, f"{len(found)} fields differ from {GOLDEN.name}:\n" + "\n".join(found[:50])
 
 
-@pytest.mark.xfail(
-    not PINNED_PLATFORM, reason="hash pinned on macOS arm64; elsewhere the golden body test", strict=False
-)
 def test_the_synthetic_end_to_end_run_gives_the_published_hash(body: dict[str, Any]) -> None:
     assert body["result_sha256"] == EXPECTED_SHA256
 
