@@ -111,4 +111,4 @@ work, not what they contain.
 
 ## License
 
-All rights reserved for now: the code is public to read, but no licence to reuse it is granted yet.
+All rights reserved for now: the code is public to read, but do not auto use it, at least cost you one star to repo:).
