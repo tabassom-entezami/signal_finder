@@ -12,7 +12,7 @@ import math
 import subprocess  # noqa: S404 - read-only git and pytest calls for the real-data preconditions
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
@@ -445,13 +445,29 @@ def _rounded(x: Any) -> Any:
     return float(f"{x:.9g}") if isinstance(x, float) and math.isfinite(x) else x
 
 
+def _rounded_bars(bars: Bars) -> Bars:
+    """Synthetic prices to 9 significant digits.
+
+    The random draws go through libm and SIMD code whose last bits differ between platforms (1 ulp moved PBO
+    by up to 17 of 12,870 splits), and the input hash reads the raw bytes.
+    """
+
+    def r9(a: Any) -> Any:
+        return np.array([float(f"{x:.9g}") for x in a.ravel()]).reshape(a.shape)
+
+    return replace(
+        bars, open=r9(bars.open), high=r9(bars.high), low=r9(bars.low), close=r9(bars.close), u=r9(bars.u)
+    )
+
+
 def reproduce_dev(seed: int, out: Path, mc_paths: int = DEV_PATHS) -> dict[str, Any]:
     """The whole M1 path on synthetic bars: rule, backtest, gates, Monte Carlo, result hash.
 
     Needs no real data, rules file or trial log; the account values come from the environment. The same
-    seed and values are meant to give the same `result_sha256` on any machine; the pinned test checks it.
+    seed and values give the same `result_sha256` on the same platform and `uv.lock` (pinned on macOS arm64);
+    other platforms match the golden body in the tests (verdict, gate pass/fail and values).
     """
-    bars = synthetic_bars(seed, DEV_DAYS)
+    bars = _rounded_bars(synthetic_bars(seed, DEV_DAYS))
     body = {
         "data_mode": "synthetic-dev",
         "seed": seed,

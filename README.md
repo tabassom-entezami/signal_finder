@@ -42,7 +42,9 @@ uv run python -m signal_engine record-books --symbols BTC/EUR,BTC/USDC --interva
 STAKE_USD=1000 P98_MAX_USD=100 SAVINGS_PCT=0.03 OP_EVENTS='[[0.01, 0.1, 0.5]]' \
   uv run python -m signal_engine reproduce-dev --seed 7 --out dev.json
 #   the whole first-test path (rule, backtest, gates, Monte Carlo) on synthetic bars with demo account values;
-#   no real data, rules file or .env needed; expect result_sha256 0b87ed0e3d3dffd496dba03cc94feb58d044b44fa8633c2662aceff34df19270
+#   no real data, rules file or .env needed; on macOS arm64 expect result_sha256
+#   89d912618a3cf9ae43a2661249a885a89c152fd74cd16ed8ce327a4d8b43863d (other platforms: verdict FAIL and the gate
+#   values in tests/golden/reproduce_dev_seed7.json)
 ```
 
 Data is written under `data/` (git-ignored).
