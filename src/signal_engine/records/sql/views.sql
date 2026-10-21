@@ -106,6 +106,30 @@ LEFT JOIN ops_agent_runs AS a ON a.id = f.agent_run_id
 WHERE lower(trim(f.source)) <> 'backfill' -- a backfilled p is ex-post by construction: kept, never calibrated
 GROUP BY coalesce(a.persona, f.owner), substr(r.created_utc, 1, 7);
 
+-- Forecast scorecard per forecaster and month, read after each round: scored n, the Brier score (shown from
+-- 30 scored forecasts, NULL below), the Brier score of always forecasting the observed base rate, and the
+-- count of each error class. Backfilled and unscorable resolutions are counted but never scored.
+DROP VIEW IF EXISTS score_forecast_card;
+CREATE VIEW score_forecast_card AS
+WITH s AS (
+  SELECT coalesce(a.persona, f.owner) AS forecaster, substr(r.created_utc, 1, 7) AS month, f.p, r.outcome,
+    r.error_class,
+    CASE WHEN lower(trim(f.source)) = 'backfill' OR r.error_class IS 'unscorable' THEN 0 ELSE 1 END AS scored
+  FROM decide_forecasts_current AS f
+  JOIN decide_forecast_resolutions_current AS r ON r.forecast_id = f.id
+  LEFT JOIN ops_agent_runs AS a ON a.id = f.agent_run_id
+)
+SELECT forecaster, month, sum(scored) AS n_scored, count(*) - sum(scored) AS n_unscorable,
+  CASE WHEN sum(scored) >= 30
+    THEN avg(CASE WHEN scored = 1 THEN (p - outcome) * (p - outcome) END) END AS brier,
+  CASE WHEN sum(scored) >= 30 THEN avg(CASE WHEN scored = 1 THEN outcome END)
+    * (1 - avg(CASE WHEN scored = 1 THEN outcome END)) END AS brier_base_rate,
+  sum(error_class IS 'data') AS data, sum(error_class IS 'code') AS code, sum(error_class IS 'cost') AS cost,
+  sum(error_class IS 'regime') AS regime, sum(error_class IS 'assumption') AS assumption,
+  sum(error_class IS 'noise') AS noise
+FROM s
+GROUP BY forecaster, month;
+
 DROP VIEW IF EXISTS score_decision_reviews;
 CREATE VIEW score_decision_reviews AS
 SELECT

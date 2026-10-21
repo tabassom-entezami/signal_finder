@@ -164,3 +164,35 @@ def test_the_m1_key_does_not_open_the_held_back_altcoins(store: Path) -> None:
     assert load(store, "bitvavo", "BTC-EUR", **key).num_rows == 4  # type: ignore[arg-type]
     with pytest.raises(LoaderLockError, match="SOL-EUR"):
         load(store, "bitvavo", "SOL-EUR", prereg_hash=HASH, purpose="m1-oos", sha256_file=sha)
+
+
+def test_an_ingest_before_the_close_falls_back_to_the_close() -> None:
+    # Real sample: data/raw/ecb/EUR-USD/2026/10/part-0.parquet, 1 of 1,958 rows; the 2026-10-16 fix
+    # was fetched at 14:34:17.230 UTC, 5,142,770 ms before its assumed 16:00 UTC close.
+    early = _bars(["2026-10-14"], first_lag_ms=-5_142_770)
+    assert available_time(early) == [_ms("2026-10-15")]
+    assert available_time(_bars(["2026-10-14"], first_lag_ms=-1)) == [_ms("2026-10-15")]
+    assert available_time(_bars(["2026-10-14"], first_lag_ms=0)) == [_ms("2026-10-15")]
+    assert as_of(early, datetime(2026, 10, 14, 23, 59, tzinfo=UTC)).num_rows == 0
+
+
+def test_a_bar_without_close_time_is_refused() -> None:
+    rows = _bars(["2026-10-14"]).to_pylist()
+    rows[0]["close_time"] = None
+    with pytest.raises(ValueError, match="close_time"):
+        available_time(pa.Table.from_pylist(rows, schema=SCHEMA))
+
+
+def test_a_ts_stored_twice_is_refused(store: Path) -> None:
+    # Same bar in a second month folder: a writer bug, never silently deduplicated.
+    write_partition(_bars(["2019-08-15"]), store, "bitvavo", "USDC-EUR", datetime(2019, 9, 1, tzinfo=UTC))
+    with pytest.raises(ValueError, match="more than once"):
+        load(store, "bitvavo", "USDC-EUR", sha256_file=store / "prereg.sha256")
+
+
+def test_the_lock_opens_exactly_up_to_the_oos_start(store: Path) -> None:
+    sha = store / "prereg.sha256"
+    oos = datetime(2019, 8, 17, tzinfo=UTC)
+    assert load(store, "bitvavo", "BTC-EUR", end=oos, sha256_file=sha).num_rows == 2
+    with pytest.raises(LoaderLockError):
+        load(store, "bitvavo", "BTC-EUR", end=oos + timedelta(milliseconds=1), sha256_file=sha)

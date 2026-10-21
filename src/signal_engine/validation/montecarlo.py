@@ -4,8 +4,17 @@ Moving-block bootstrap of the OOS daily records (both coins on the same day inde
 sigma_d and open/high/low/close relative to the previous close. Each 365-day path starts flat
 at C0 and runs the same `run_path` as path A with the floor on, the overshoot on every stop and
 one unprotected halt gap on a uniformly random day.
+
+Model assumption: tau and sigma_d are resampled with the returns of their own day, not recomputed on the
+synthetic path. The block (20 days) is shorter than every lookback (21/63/252 days, 31-point sigma), so
+at each block join the position size can jump to a value the synthetic history would not give. Stops are
+checked on the synthetic path, but their distance inherits sigma_d. The bias of the P98 loss can go either
+way, so the P98 is a model estimate, not a loss ceiling; no block-length sensitivity was run for M1.
+For later rules, `simulate(..., inputs=strategy_inputs)` recomputes tau and sigma_d on each synthetic path
+after a WARMUP-day prefix, and `sweep` reports the P98 over block lengths; the gate value is the worst one.
 """
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 import numpy as np
@@ -18,8 +27,11 @@ Arr = NDArray[np.float64]
 DAY_MS = 86_400_000
 MONDAY_MS = 4 * DAY_MS  # 1970-01-05, a Monday: synthetic path calendars start on a week boundary
 BLOCK = 20
+BLOCKS = (5, 10, 20, 40)  # block-length sensitivity grid
+WARMUP = 252 + 30  # longest vote lookback plus the 31-point sigma window
 DAYS = 365
 PATHS = 10_000
+Inputs = Callable[[Bars], tuple[Arr, Arr]]  # bars -> (tau, sigma_d), e.g. engine.strategy_inputs
 MC_PARAMS = Params(account=True, apply_floor=True)
 # Operational events for the reported total-loss P98 come from `OP_EVENTS` in `.env`: (annual probability,
 # loss range as a share of the stake). Market, stop gaps and the halt gap are already in each path.
@@ -65,23 +77,29 @@ def simulate(
     block: int = BLOCK,
     params: Params = MC_PARAMS,
     stake: float | None = None,
+    inputs: Inputs | None = None,
 ) -> MCResult:
+    """inputs=None resamples tau and sigma_d with their own day (the M1 gate); a function recomputes them
+    on each synthetic path, which first runs WARMUP days so every lookback is filled."""
     if len(rec.tau) < block:
         raise ValueError("fewer records than one block")
     stake = float(required("stake_usd")) if stake is None else stake
     rng = np.random.default_rng(seed)
     coins = rec.tau.shape[1]
-    ts = (MONDAY_MS + DAY_MS * np.arange(days + 1)).astype(np.int64)
+    pre = 0 if inputs is None else WARMUP
+    # The first decision day (index pre) stays a Monday.
+    ts = (MONDAY_MS + DAY_MS * (np.arange(pre + days + 1) + (-pre % 7))).astype(np.int64)
     end, max_dd, froze, stopped = np.empty(n_paths), np.empty(n_paths), np.empty(n_paths), np.empty(n_paths)
     for p in range(n_paths):
-        idx = _indices(rng, len(rec.tau), days + 1, block)
+        idx = _indices(rng, len(rec.tau), pre + days + 1, block)
         rel = rec.rel[idx]
         close = np.cumprod(np.vstack([np.ones((1, coins)), rel[1:, 3]]), axis=0)
         prev = np.vstack([np.ones((1, coins)), close[:-1]])
         o, h, lo = rel[:, 0] * prev, rel[:, 1] * prev, rel[:, 2] * prev
         bars = Bars(ts, o, h, lo, close, close, 0)
+        tau, sigma = (rec.tau[idx], rec.sigma[idx]) if inputs is None else inputs(bars)
         halt = int(rng.integers(1, days + 1))
-        res = run_path(bars, rec.tau[idx], rec.sigma[idx], params, halt_day=halt)
+        res = run_path(bars, tau, sigma, params, start=pre, halt_day=halt)
         end[p], max_dd[p] = res.equity[-1], res.max_drawdown()
         froze[p], stopped[p] = res.freezes > 0, res.stopped
     loss = -(end - 1.0) * stake
@@ -96,6 +114,21 @@ def simulate(
         paths=n_paths,
         p98_total_loss=float(np.percentile(total, 98)),
     )
+
+
+def sweep(
+    rec: Records,
+    seeds: Iterable[int],
+    blocks: Iterable[int] = BLOCKS,
+    n_paths: int = PATHS,
+    stake: float | None = None,
+    inputs: Inputs | None = None,
+) -> dict[tuple[int, int], MCResult]:
+    """One run per (block, seed); report the P98 as the range over the grid and gate on its maximum."""
+    seeds = list(seeds)
+    return {
+        (b, s): simulate(rec, s, n_paths, block=b, stake=stake, inputs=inputs) for b in blocks for s in seeds
+    }
 
 
 def operational_loss(rng: np.random.Generator, n_paths: int) -> Arr:

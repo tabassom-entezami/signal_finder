@@ -1,6 +1,6 @@
  # Architecture
 
-`signal_finder` is the open part of a crypto swing-signal engine for daily and four-hour bars. This document explains how the whole system fits together, which parts live in this repository, and the rules every part follows.
+`signal_finder` is the open part of a crypto swing-signal engine for daily bars (four-hour bars are planned, not built). This document explains how the whole system fits together, which parts live in this repository, and the rules every part follows.
 
 ## 1. What the system does, end to end
 

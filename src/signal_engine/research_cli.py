@@ -21,6 +21,7 @@ from signal_engine.validation.m1_oos import (
     CodeDefectError,
     PreconditionError,
     RealBarSource,
+    reproduce_dev,
     run_m1_oos,
 )
 
@@ -84,6 +85,9 @@ def add_commands(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> 
     oos.add_argument("--seeds", required=True, type=int, nargs="+", help="Monte Carlo seeds, e.g. 1 2")
     oos.add_argument("--out", required=True, type=Path, help="result JSON path")
     oos.add_argument("--report", required=True, type=Path, help="report Markdown path")
+    dev = sub.add_parser("reproduce-dev", help="the whole M1 path on synthetic bars, with a result hash")
+    dev.add_argument("--seed", type=int, default=7, help="synthetic market seed (default 7)")
+    dev.add_argument("--out", required=True, type=Path, help="result JSON path")
     _add_records(sub)
 
 
@@ -244,6 +248,15 @@ def run(args: argparse.Namespace, settings: Settings, log: logging.Logger) -> in
             log.error("m1-oos refused", extra={"reason": str(exc)})
             return 2
         log.info("m1-oos done", extra={"verdict": body["verdict"], "result_sha256": body["result_sha256"]})
+        return 0
+    if args.command == "reproduce-dev":
+        try:
+            body = reproduce_dev(args.seed, args.out)
+        except (CodeDefectError, ValueError) as exc:
+            log.error("reproduce-dev refused", extra={"reason": str(exc)})
+            return 2
+        done = {"verdict": body["verdict"], "result_sha256": body["result_sha256"]}
+        log.info("reproduce-dev done", extra=done)
         return 0
     if args.command == "records":
         return _records(args, log)

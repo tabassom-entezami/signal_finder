@@ -25,6 +25,7 @@ import pyarrow.compute as pc
 
 from signal_engine.backtest.engine import Bars, Params, RunResult, run_path, strategy_inputs
 from signal_engine.backtest.resolver import Episode, exit_table
+from signal_engine.backtest.synthetic import synthetic_bars
 from signal_engine.data import bitvavo, ecb, eurconv, pit
 from signal_engine.settings import required
 from signal_engine.strategy import b_spot
@@ -429,6 +430,41 @@ def run_m1_oos(
     out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(_report(body), encoding="utf-8")
+    return dict(body)
+
+
+DEV_DAYS, DEV_TRIALS, DEV_SEEDS, DEV_PATHS = 700, 9, (1, 2), 200
+
+
+def _rounded(x: Any) -> Any:
+    """Floats to 9 significant digits, so the dev hash does not depend on the last bits of a platform."""
+    if isinstance(x, dict):
+        return {k: _rounded(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_rounded(v) for v in x]
+    return float(f"{x:.9g}") if isinstance(x, float) and math.isfinite(x) else x
+
+
+def reproduce_dev(seed: int, out: Path, mc_paths: int = DEV_PATHS) -> dict[str, Any]:
+    """The whole M1 path on synthetic bars: rule, backtest, gates, Monte Carlo, result hash.
+
+    Needs no real data, rules file or trial log; the account values come from the environment. The same
+    seed and values are meant to give the same `result_sha256` on any machine; the pinned test checks it.
+    """
+    bars = synthetic_bars(seed, DEV_DAYS)
+    body = {
+        "data_mode": "synthetic-dev",
+        "seed": seed,
+        "strategy_version": b_spot.STRATEGY_VERSION,
+        "input_sha256": input_hash(bars),
+        # the gates only keep pass/fail of the caps, so the values themselves go into the hash
+        "account": {k: required(k) for k in ("stake_usd", "p98_max_usd", "savings_pct", "op_events")},
+        **evaluate(bars, DEV_TRIALS, 0.0, DEV_SEEDS, mc_paths),
+    }
+    body = _rounded(_jsonable(body))
+    body["result_sha256"] = result_hash(body)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return dict(body)
 
 

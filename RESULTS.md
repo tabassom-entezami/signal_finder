@@ -33,7 +33,7 @@ One rule, written down and frozen before the test, with every constant fixed:
 | Deflated Sharpe ratio (DSR), 9 trials | > 0.95 | 0.030 | **FAIL** |
 | Probability of backtest overfitting (PBO), 27-member grid, 12,870 splits | ≤ 0.20 | 0.072 | pass |
 | Trades (episodes; 188 closed, 2 open at the end and marked to market) | ≥ 30 | 190 | pass |
-| 12-month loss at the 98th percentile (Monte Carlo, 10,000 paths, 2 seeds) | ≤ 10.2 % of capital | 9.0 % | pass |
+| 12-month loss at the 98th percentile (Monte Carlo, 10,000 paths, 2 seeds; a model estimate, see below) | ≤ 10.2 % of capital | 9.0 % | pass |
 | Median 12-month return vs a 3.10 % savings account | ≥ 3.10 % | −7.8 % and −7.7 % (2 seeds) | **FAIL** |
 
 ### Other numbers from the same run
@@ -114,6 +114,31 @@ backtest loop in `src/signal_engine/backtest/engine.py`, the gates in `src/signa
 `m1-oos`. A full re-run needs your own copy of the input data, the frozen rules file, a warm-up data module (see
 the comment at its import) and your own account values in `.env` (`STAKE_USD`, `P98_MAX_USD`, `SAVINGS_PCT`,
 `OP_EVENTS`). The hashes above let you check that your inputs and result match ours.
+
+What a reader can and cannot reproduce from this repository today:
+
+| Artefact | In this repository | What you can do |
+|---|---|---|
+| Code: rule, backtest loop, gates, Monte Carlo, the `m1-oos` run | yes | read it; run the public tests of the rule, backtest and gate statistics (the Monte Carlo and `m1-oos` tests are not public); `m1-oos` refuses any rules file whose hash differs from the constant in the code, so running it on your own data means writing your own rules file and changing that constant |
+| Frozen rules file | no, only its hash | check a copy against the hash above |
+| Input data (daily candles, ECB reference rates) | no, only its hash | re-fetch with the public fetch commands in the README; the venue may have revised old bars, so your hash can differ |
+| Warm-up data module (bars before the venue's listing) | no | write your own (see the comment at its import) |
+| Account values (`.env`) | names only, in `.env.example` | use your own; the loss and return gates then change |
+| Result file | no, only its hashes | read the pinned report in `docs/reports/m1-oos-report.md` |
+
+So the method can be checked and re-run, but the reported numbers cannot yet be reproduced bit for bit from
+this repository alone. Whether to publish the rules file and the input data is open (data licence terms).
+To check that the whole path runs and is deterministic, `reproduce-dev` (see the README) runs the same rule,
+backtest, gates and Monte Carlo on synthetic bars with demo account values and prints a result hash that a
+public test pins.
+
+**The Monte Carlo loss is a model estimate, not a loss ceiling.** Each path resamples 20-day blocks of the
+out-of-sample days. The position size and volatility of each day are resampled with that day's returns, not
+recomputed on the new path, so at each block join the size can jump to a value the new path would not give.
+Stops are checked on the new path. This can bias the 98th-percentile loss either way, and no block-length
+sensitivity was run. Real losses can be larger. The rule failed on three other gates, so this does not change
+the verdict. The proposal for the next rule's pre-registration is to report this gate as a range over block lengths, with the
+size recomputed on each path.
 
 ## Limits of this result
 

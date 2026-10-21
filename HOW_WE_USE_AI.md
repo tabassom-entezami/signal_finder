@@ -18,7 +18,7 @@ built only once a base strategy passes its own test, and it is kept only if it b
                                structured, evidence-tagged summary
                                                │
                                                ▼
-                                   Claude (meta-labeler)
+                                   Claude (meta-labeler, planned)
                                                │
                                                ▼
                                  validator chain (code) ──► rejected
@@ -36,6 +36,8 @@ size positions, because a language model is not a reliable calculator and its ou
 can vary between calls.
 
 ## 2. Claude is a meta-labeler
+
+Planned design, not running yet: sections 2 to 6 and 8 describe the layer as it will be built.
 
 "Meta-labeling" is an established idea in quantitative finance: a primary model
 proposes a trade, and a secondary model decides whether that proposal is worth acting
@@ -119,7 +121,7 @@ it lost is still a losing strategy.
 If the API times out or errors, the engine falls back to a deterministic path defined
 in code; nothing waits on the model to stay safe. Calls are budgeted: the right model
 size is chosen per task, repeated context is cached, and non-urgent work can be sent
-in batches. Cost per signal is measured, not estimated.
+in batches. Cost per signal will be measured, not estimated.
 
 ## Why this design
 

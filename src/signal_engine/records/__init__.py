@@ -65,6 +65,7 @@ SCORE_VIEWS = (
     "score_agent_runs",
     "score_verification",
     "score_brier",
+    "score_forecast_card",
     "score_decision_reviews",
     "score_ingest",
     "score_lessons",

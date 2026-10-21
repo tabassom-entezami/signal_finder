@@ -105,7 +105,11 @@ def available_time(table: pa.Table) -> list[int]:
     for close, first in zip(
         table.column("close_time").to_pylist(), table.column("first_available_time").to_pylist(), strict=True
     ):
-        live = first is not None and first - close <= BACKFILL_LAG_MS
+        if close is None:
+            raise ValueError("bar without close_time: its availability is unknown (point-in-time rule)")
+        # An ingest before the close (e.g. an ECB fix published before the assumed time) never
+        # makes a bar usable earlier than its close.
+        live = first is not None and 0 <= first - close <= BACKFILL_LAG_MS
         out.append(first if live else close)
     return out
 
@@ -154,6 +158,9 @@ def load(
     sql = f"SELECT * FROM read_parquet(?, union_by_name = true) WHERE {' AND '.join(where)} ORDER BY ts"  # noqa: S608 (fixed fragments)
     con = duckdb.connect()
     try:
-        return con.execute(sql, [*params, *params_ms]).to_arrow_table()
+        table = con.execute(sql, [*params, *params_ms]).to_arrow_table()
     finally:
         con.close()
+    if pc.count_distinct(table.column("ts")).as_py() != table.num_rows:
+        raise ValueError(f"{symbol}: the same ts is stored more than once under {folder} (writer bug)")
+    return table

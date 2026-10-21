@@ -1,6 +1,6 @@
 # signal_finder
 
-A crypto swing-trading signal engine (BTC/ETH, 4H/1D). Deterministic quant code computes the regime, the score
+A crypto swing-trading signal engine (BTC/ETH, daily bars; four-hour bars are planned, not built). Deterministic quant code computes the regime, the score
 and the risk of every signal; a language model is planned to act only as an evidence-checked meta-labeler on
 top, and only if it beats the code alone. Signals are generic, versioned and meant to be published with a public
 track record.
@@ -39,6 +39,10 @@ uv run python -m signal_engine fetch-ecb --start 2019-03-01 --end <date> [--data
 #   ECB EUR/USD reference rates
 uv run python -m signal_engine record-books --symbols BTC/EUR,BTC/USDC --interval 5 --start <ISO UTC> [--end <ISO UTC>]
 #   records public order books every few seconds; a failed fetch is an error row, the run continues
+STAKE_USD=1000 P98_MAX_USD=100 SAVINGS_PCT=0.03 OP_EVENTS='[[0.01, 0.1, 0.5]]' \
+  uv run python -m signal_engine reproduce-dev --seed 7 --out dev.json
+#   the whole first-test path (rule, backtest, gates, Monte Carlo) on synthetic bars with demo account values;
+#   no real data, rules file or .env needed; expect result_sha256 0b87ed0e3d3dffd496dba03cc94feb58d044b44fa8633c2662aceff34df19270
 ```
 
 Data is written under `data/` (git-ignored).
