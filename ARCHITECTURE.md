@@ -42,9 +42,11 @@
 - fetchers and recorders: Bitvavo daily candles, Bitvavo public order books and market status, ECB EUR/USD reference rates, CFTC Commitments of Traders for the CME bitcoin and ether futures, Bitvavo market and asset listings with daily diffs, and news/status/regulator feeds;
 - the outcome resolver;
 - the paper simulator and its order-book fill model;
+- the code behind the first out-of-sample test: the frozen momentum rule, the backtest loop and synthetic test data, the validation statistics (PSR, DSR, PBO, the loss Monte Carlo, the trial log), the point-in-time loader with its lock, the currency conversion join and the `m1-oos` command;
+- the append-only records store (SQLite, migrations, triggers, views) and its core `records` commands;
 - tests for all of the above.
 
-**Private (by role):** features and strategy rules, risk sizing, the backtest loop and synthetic test data, validation statistics, the research data loader and currency conversion join, the prediction record and scorecard, the research database, and operations scripts. The command-line tool loads the research commands only when those private modules are present, so this repository runs on its own.
+**Private (by role):** the frozen rules file, the reserved-coin rule, the warm-up data source, the records importers and their key, the research database, the prediction record and scorecard, and operations scripts. A public module that needs one of them says so in a comment at its import and asks you to create your own; the command-line tool registers a command only when its modules are present, so this repository runs on its own. The owner's own values (stake, loss limit, savings rate, operational events, default owners) are read from `.env` (see `.env.example`); nothing personal is in the code.
 
 ## 3. Data layout and point-in-time rules
 

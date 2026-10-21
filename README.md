@@ -8,8 +8,10 @@ track record.
 **Status:** research stage; nothing is traded. This repository holds the generic engine and its tests: data
 fetchers and recorders, storage and a paper simulator. The first frozen strategy failed its
 pre-registered out-of-sample test after realistic execution costs, so it was not deployed; the result is
-published in [RESULTS.md](RESULTS.md). Strategies, validation code, data, research notes and internal decision
-records stay private.
+published in [RESULTS.md](RESULTS.md), and the code that produced it is here too: the frozen strategy rule,
+the backtest loop, the validation statistics, the point-in-time loader and the append-only records store. Data,
+the frozen rules file, research notes, internal decision records and the owner's own account values (kept in
+`.env`) stay private.
 
 **Author:** Tabassom Entezami
 

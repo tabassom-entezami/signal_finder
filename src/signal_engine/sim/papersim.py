@@ -21,12 +21,12 @@ from signal_engine.backtest.resolver import (
     check_bar,
     mark_open,
 )
+from signal_engine.settings import required
 from signal_engine.sim import books
 
 PROTECTED = "PROTECTED"
 RESIDUAL = "RESIDUAL"
 ENTRY = "ENTRY"
-C0_EUR = 446.0  # $500 C_max at the 2026-10 rate (brief)
 RESIDUAL_DELAY_MS = 5_000
 OBSERVATION_GAP_MS = 15_000
 PRE_CLOSE_MS = 120_000  # no orders in the 2 minutes before a 1D close (AFM marking-the-close case)
@@ -77,7 +77,8 @@ class Position:
 
 @dataclass
 class Account:
-    cash: float = C0_EUR
+    # the owner's starting cash (`PAPER_CASH_EUR` in `.env`)
+    cash: float = field(default_factory=lambda: float(required("paper_cash_eur")))
     positions: dict[int, Position] = field(default_factory=dict)
     closed: list[Episode] = field(default_factory=list)
 

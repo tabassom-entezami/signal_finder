@@ -107,6 +107,14 @@ The last row is the lesson. A short in-sample window looked good. Seven years of
 | Result file, as saved | `e219bcdfca2ccf9b9f88ca84c564e8575baf69307304703a655a47293be25f21` |
 | Result content (the result JSON without its own `result_sha256` field) | `ecfac932a2547872249dead42dfa1e568aa9c7a5f13be601a6e216936c79a928` |
 
+## Reproduce
+
+The code that produced this result is in this repository: the rule in `src/signal_engine/strategy/b_spot.py`, the
+backtest loop in `src/signal_engine/backtest/engine.py`, the gates in `src/signal_engine/validation/` and the run in
+`m1-oos`. A full re-run needs your own copy of the input data, the frozen rules file, a warm-up data module (see
+the comment at its import) and your own account values in `.env` (`STAKE_USD`, `P98_MAX_USD`, `SAVINGS_PCT`,
+`OP_EVENTS`). The hashes above let you check that your inputs and result match ours.
+
 ## Limits of this result
 
 It is one rule on two coins, on one venue, on daily bars, from 2019 to 2026. It does not show that momentum fails
