@@ -15,6 +15,7 @@ from signal_engine.data.pit import (
     available_time,
     closed,
     is_locked_symbol,
+    is_unlocked,
     load,
     read_prereg_hash,
 )
@@ -80,6 +81,16 @@ def test_lock_allows_oos_with_the_hash_and_purpose(store: Path) -> None:
     assert table.column("ts").to_pylist() == [
         _ms(d) for d in ("2019-08-15", "2019-08-16", "2019-08-17", "2019-08-18")
     ]
+
+
+def test_predlog_key_opens_btc_eth_only(store: Path) -> None:
+    sha = store / "prereg.sha256"
+    table = load(store, "bitvavo", "BTC-EUR", prereg_hash=HASH, purpose="predlog", sha256_file=sha)
+    assert table.num_rows == 4
+    assert not is_unlocked(HASH, "predlog", sha, "SOL-EUR")  # the altcoins stay held out
+    (store / "prereg.md").write_bytes(PREREG_TEXT + b"edited\n")
+    with pytest.raises(LoaderLockError):  # an edited rules file never unlocks
+        load(store, "bitvavo", "BTC-EUR", prereg_hash=HASH, purpose="predlog", sha256_file=sha)
 
 
 def test_warmup_range_and_unlocked_assets_load_without_hash(store: Path) -> None:

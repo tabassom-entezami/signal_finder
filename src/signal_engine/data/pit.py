@@ -9,8 +9,8 @@ legacy rows) means `close_time`, so a backtest sees history at its close, not at
 Archive rows carry `first_available_time = close_time` and fall under the same rule.
 
 Loader lock: coin bars (every base asset except USDC/USDT/EUR/USD) at or after 2019-08-17 are only
-loaded by a call that passes the rules-file hash and purpose "m1-oos", and only while the
-rules-file text still hashes to its record (the frozen rules file and its .sha256 line).
+loaded by a call that passes a rules-file hash and a purpose in SCOPE ("m1-oos", "predlog"), and only
+while the rules-file text still hashes to its record (the frozen rules file and its .sha256 line).
 The range is checked before any file is read, so a locked bar never enters memory.
 """
 
@@ -30,10 +30,12 @@ OOS_START = datetime(2019, 8, 17, tzinfo=UTC)
 UNLOCKED_ASSETS = ("USDC", "USDT", "EUR", "USD")
 QUOTES = ("USDT", "USDC", "EUR", "USD")
 PURPOSE = "m1-oos"
+PREDLOG_PURPOSE = "predlog"  # the forward paper prediction log runs the frozen B1.1.0 rule on today's bars
 # A key opens only the coins its frozen rules test: the M1 key never opens the altcoins held
 # back for the next family (they get their own purpose and hash).
-SCOPE = {PURPOSE: ("BTC", "ETH")}
+SCOPE = {PURPOSE: ("BTC", "ETH"), PREDLOG_PURPOSE: ("BTC", "ETH")}
 PREREG_SHA256_FILE = Path(__file__).resolve().parents[3] / "docs" / "reports" / "m1-preregistration.sha256"
+PREDLOG_SHA256_FILE = PREREG_SHA256_FILE.with_name("predlog-preregistration.sha256")
 
 
 class LoaderLockError(PermissionError):

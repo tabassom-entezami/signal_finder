@@ -78,10 +78,19 @@ class RealBarSource:
 
     real = True
 
-    def __init__(self, data_dir: Path, prereg_hash: str | None = None, now: datetime | None = None) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        prereg_hash: str | None = None,
+        now: datetime | None = None,
+        purpose: str = pit.PURPOSE,
+        sha256_file: Path = pit.PREREG_SHA256_FILE,
+    ) -> None:
         self.data_dir = data_dir
-        self.prereg_hash = prereg_hash  # given by m1-oos only; None keeps the loader lock closed
+        self.prereg_hash = prereg_hash  # given by m1-oos or predict only; None keeps the loader lock closed
         self.now = now  # the clock for dropping unfinished bars; None = the wall clock
+        self.purpose = purpose
+        self.sha256_file = sha256_file
 
     def load(self) -> Bars:
         """Aligned BTC/ETH bars on one daily grid; a bar missing for a coin stays NaN (never filled).
@@ -100,7 +109,12 @@ class RealBarSource:
 
         def bitvavo_closed(symbol: str) -> pa.Table:
             table = pit.load(
-                self.data_dir, bitvavo.SOURCE, symbol, prereg_hash=self.prereg_hash, purpose=pit.PURPOSE
+                self.data_dir,
+                bitvavo.SOURCE,
+                symbol,
+                prereg_hash=self.prereg_hash,
+                purpose=self.purpose,
+                sha256_file=self.sha256_file,
             )
             return pit.closed(table, now)
 
