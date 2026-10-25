@@ -13,7 +13,7 @@ import subprocess  # noqa: S404 - read-only git and pytest calls for the real-da
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Protocol
@@ -85,12 +85,15 @@ class RealBarSource:
         now: datetime | None = None,
         purpose: str = pit.PURPOSE,
         sha256_file: Path = pit.PREREG_SHA256_FILE,
+        known_at: datetime | None = None,
     ) -> None:
         self.data_dir = data_dir
         self.prereg_hash = prereg_hash  # given by m1-oos or predict only; None keeps the loader lock closed
         self.now = now  # the clock for dropping unfinished bars; None = the wall clock
         self.purpose = purpose
         self.sha256_file = sha256_file
+        # verify-record only: keep the Bitvavo bars first ingested by this time (null = unknown, dropped)
+        self.known_at = known_at
 
     def load(self) -> Bars:
         """Aligned BTC/ETH bars on one daily grid; a bar missing for a coin stays NaN (never filled).
@@ -116,7 +119,12 @@ class RealBarSource:
                 purpose=self.purpose,
                 sha256_file=self.sha256_file,
             )
-            return pit.closed(table, now)
+            table = pit.closed(table, now)
+            if self.known_at is not None:
+                # strictly before: a fetch started in the same millisecond as the run writes after it reads
+                before = self.known_at - timedelta(milliseconds=1)
+                table = pit.as_of(table, before, column="first_available_time")
+            return table
 
         ecb_fixes = pit.load(self.data_dir, ecb.SOURCE, ecb.SYMBOL)
         usdc_eur = bitvavo_closed("USDC-EUR")

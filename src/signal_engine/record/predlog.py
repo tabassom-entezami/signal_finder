@@ -19,7 +19,7 @@ import json
 import math
 import os
 import secrets
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -175,6 +175,61 @@ def _day(ms: int) -> str:
     return iso(ms)[:10]
 
 
+def bar_index(bars: Bars) -> dict[int, int]:
+    index = {int(t): n for n, t in enumerate(bars.ts)}
+    if len(index) != len(bars.ts):
+        raise ValueError("the same bar ts appears twice in the input: refused, never deduplicated")
+    return index
+
+
+def outcome_body(
+    bars: Bars, index: dict[int, int], i: int, pred: dict[str, Any], now_ms: int
+) -> dict[str, Any] | None:
+    """The outcome line of prediction `pred` for coin `i`, or None while it is not due or a bar is missing."""
+    a = int(pred["as_of_ts"])
+    ref, out = index.get(a + REF_DAYS * DAY_MS), index.get(a + OUT_DAYS * DAY_MS)
+    if ref is None or out is None or a + (OUT_DAYS + 1) * DAY_MS > now_ms:
+        return None
+    u_ref, u_out = float(bars.u[ref, i]), float(bars.u[out, i])
+    if not (math.isfinite(u_ref) and math.isfinite(u_out)):
+        return None  # a missing bar keeps the outcome pending, never filled
+    return {"id": f"outcome:{pred['id']}", "kind": "outcome", "symbol": pred["symbol"],
+            "prediction_seq": pred["seq"], "u_ref": dec(u_ref), "u_out": dec(u_out), "hit": u_out > u_ref}
+
+
+def decide_body(
+    bars: Bars, index: dict[int, int], i: int, want_as_of: int, table: dict[str, dict[str, str | int]],
+    p_sha: str, prereg_sha256: str, code: str,
+) -> dict[str, Any]:
+    """The prediction line for coin `i` on bar `want_as_of`, or a no_decision line with its reason."""
+    coin = b_spot.COINS[i]
+    symbol = f"{coin}-EUR"
+    a_idx = index.get(want_as_of)
+    reason = None
+    if a_idx is None or bars.ts[-1] != want_as_of:
+        reason = f"the last closed bar is not {_day(want_as_of)} (run fetch-candles first)"
+    elif not math.isfinite(bars.u[a_idx, i]):
+        reason = "the as_of bar is missing"
+    tau = math.nan
+    if reason is None and a_idx is not None:
+        tau = float(b_spot.signals(bars.u[: a_idx + 1, i])[0][-1])
+        if not math.isfinite(tau):
+            reason = "a hole in the lookback window"
+    if reason is not None or a_idx is None:
+        return {"id": f"no_decision:{symbol}:{_day(want_as_of)}", "kind": "no_decision", "symbol": symbol,
+                "day": _day(want_as_of), "reason": reason or "the as_of bar is missing"}
+    state = "long" if tau > 0 else "flat"
+    return {
+        "id": f"prediction:{symbol}:{_day(want_as_of)}", "kind": "prediction", "symbol": symbol,
+        "day": _day(want_as_of), "as_of": iso(want_as_of), "as_of_ts": want_as_of,
+        "decision": {"target_weight": dec(tau, 4), "state": state, "p": table[coin][f"p_{state}"],
+                     "event": EVENT, "horizon_days": OUT_DAYS - REF_DAYS},
+        "input_sha256": bars_sha256(bars.ts[: a_idx + 1], bars.u[: a_idx + 1, i]),
+        "params_sha256": p_sha, "prereg_sha256": prereg_sha256,
+        "versions": {"strategy": b_spot.STRATEGY_VERSION, "predlog": VERSION}, "code": code,
+    }
+
+
 def predict(
     bars: Bars,
     record_dir: Path,
@@ -190,9 +245,7 @@ def predict(
     want_as_of = today_ms - DAY_MS  # the last bar that has closed at `now`
     table = train_table(bars)
     p_sha = params_sha256(table)
-    index = {int(t): n for n, t in enumerate(bars.ts)}
-    if len(index) != len(bars.ts):
-        raise ValueError("the same bar ts appears twice in the input: refused, never deduplicated")
+    index = bar_index(bars)
     written: list[dict[str, Any]] = []
     with _locked(record_dir):
         verify(record_dir, stamp_path)
@@ -211,48 +264,110 @@ def predict(
                     if body["id"] not in done:
                         written.append(_append(record_dir, body, now_ms))
             for pred in (line for line in lines if line["kind"] == "prediction" and line["symbol"] == symbol):
-                oid = f"outcome:{pred['id']}"  # 2. outcomes that came due
-                a = int(pred["as_of_ts"])
-                ref, out = index.get(a + REF_DAYS * DAY_MS), index.get(a + OUT_DAYS * DAY_MS)
-                if oid in done or ref is None or out is None or a + (OUT_DAYS + 1) * DAY_MS > now_ms:
+                if f"outcome:{pred['id']}" in done:  # 2. outcomes that came due
                     continue
-                u_ref, u_out = float(bars.u[ref, i]), float(bars.u[out, i])
-                if not (math.isfinite(u_ref) and math.isfinite(u_out)):
-                    continue  # a missing bar keeps the outcome pending, never filled
-                body = {"id": oid, "kind": "outcome", "symbol": symbol, "prediction_seq": pred["seq"],
-                        "u_ref": dec(u_ref), "u_out": dec(u_out), "hit": u_out > u_ref}
-                written.append(_append(record_dir, body, now_ms))
+                outcome = outcome_body(bars, index, i, pred, now_ms)
+                if outcome is not None:
+                    written.append(_append(record_dir, outcome, now_ms))
             pid = f"prediction:{symbol}:{_day(want_as_of)}"  # 3. today's line
             nid = f"no_decision:{symbol}:{_day(want_as_of)}"
             if pid in done or nid in done:
                 continue
-            a_idx = index.get(want_as_of)
-            reason = None
-            if a_idx is None or bars.ts[-1] != want_as_of:
-                reason = f"the last closed bar is not {_day(want_as_of)} (run fetch-candles first)"
-            elif not math.isfinite(bars.u[a_idx, i]):
-                reason = "the as_of bar is missing"
-            tau = math.nan
-            if reason is None and a_idx is not None:
-                tau = float(b_spot.signals(bars.u[: a_idx + 1, i])[0][-1])
-                if not math.isfinite(tau):
-                    reason = "a hole in the lookback window"
-            if reason is not None or a_idx is None:
-                body = {"id": nid, "kind": "no_decision", "symbol": symbol, "day": _day(want_as_of),
-                        "reason": reason or "the as_of bar is missing"}
-                written.append(_append(record_dir, body, now_ms))
-                continue
-            state = "long" if tau > 0 else "flat"
-            body = {
-                "id": pid, "kind": "prediction", "symbol": symbol, "day": _day(want_as_of),
-                "as_of": iso(want_as_of), "as_of_ts": want_as_of,
-                "decision": {"target_weight": dec(tau, 4), "state": state, "p": table[coin][f"p_{state}"],
-                             "event": EVENT, "horizon_days": OUT_DAYS - REF_DAYS},
-                "input_sha256": bars_sha256(bars.ts[: a_idx + 1], bars.u[: a_idx + 1, i]),
-                "params_sha256": p_sha, "prereg_sha256": prereg_sha256,
-                "versions": {"strategy": b_spot.STRATEGY_VERSION, "predlog": VERSION}, "code": code,
-            }
+            body = decide_body(bars, index, i, want_as_of, table, p_sha, prereg_sha256, code)
             written.append(_append(record_dir, body, now_ms))
         if stamp_path is not None and (record_dir / PREDICTIONS).exists():
             _stamp(record_dir, stamp_path)
     return written
+
+
+def _ms_of(stamp: str) -> int:
+    return int(datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp() * 1000)
+
+
+def _drift(want: dict[str, Any], got: dict[str, Any]) -> list[str]:
+    """Why a rebuilt decision line differs from the stored one (empty when equal)."""
+    if got == want:
+        return []
+    if got.get("kind") != want.get("kind") or got.get("reason") != want.get("reason"):
+        return ["DECISION_DRIFT"]  # e.g. a no_decision line that rebuilds as a prediction
+    reasons = []
+    if got.get("input_sha256") != want.get("input_sha256"):
+        reasons.append("INPUT_DRIFT")
+    if got.get("params_sha256") != want.get("params_sha256"):
+        reasons.append("PARAMS_DRIFT")
+    if got.get("decision") != want.get("decision"):
+        reasons.append("DECISION_DRIFT" if reasons else "LOGIC_DRIFT")
+    return reasons or ["LOGIC_DRIFT"]
+
+
+def replay(
+    record_dir: Path,
+    load_bars: Callable[[datetime], Bars],
+    prereg_sha256: str,
+    seqs: set[int] | None = None,
+) -> list[tuple[int, str]]:
+    """Rebuild every prediction, no_decision and outcome line (or only `seqs`) from the bars known at its
+    `committed_at`; returns (seq, reason) for each mismatch, empty when every line rebuilds.
+
+    `load_bars(t)` must return the bars as they were known at `t` (closed and first ingested by `t`).
+    Gap lines carry no data: the chain check in `verify` covers them.
+    """
+    lines = read_trials(record_dir / PREDICTIONS)
+    by_seq = {int(line["seq"]): line for line in lines}
+    cache: dict[str, tuple[Bars, dict[int, int], dict[str, dict[str, str | int]], str]] = {}
+    out: list[tuple[int, str]] = []
+    for line in lines:
+        seq = int(line["seq"])
+        if line["kind"] == "gap" or (seqs is not None and seq not in seqs):
+            continue
+        at = line["committed_at"]
+        if at not in cache:
+            bars = load_bars(datetime.fromtimestamp(_ms_of(at) / 1000, UTC))
+            table = train_table(bars)
+            cache[at] = (bars, bar_index(bars), table, params_sha256(table))
+        bars, index, table, p_sha = cache[at]
+        now_ms = _ms_of(at)
+        want = _body_keys(line)
+        i = b_spot.COINS.index(line["symbol"].split("-")[0])
+        if line["kind"] == "outcome":
+            pred = by_seq.get(int(line["prediction_seq"]))
+            got = outcome_body(bars, index, i, pred, now_ms) if pred is not None else None
+            if got != want:
+                out.append((seq, "OUTCOME_DRIFT"))
+            continue
+        if line.get("prereg_sha256", prereg_sha256) != prereg_sha256:
+            out.append((seq, "PREREG_MISMATCH"))
+            continue
+        want_as_of = now_ms - now_ms % DAY_MS - DAY_MS
+        got = decide_body(bars, index, i, want_as_of, table, p_sha, prereg_sha256, str(line.get("code", "")))
+        out.extend((seq, reason) for reason in _drift(want, got))
+    if seqs is None and lines:  # an outcome the last run could write but no line holds
+        last = lines[-1]["committed_at"]
+        bars = load_bars(datetime.fromtimestamp(_ms_of(last) / 1000, UTC))
+        index = bar_index(bars)
+        outcomes = {line.get("prediction_seq") for line in lines if line["kind"] == "outcome"}
+        for line in lines:
+            if line["kind"] == "prediction" and line["seq"] not in outcomes:
+                i = b_spot.COINS.index(line["symbol"].split("-")[0])
+                if outcome_body(bars, index, i, line, _ms_of(last)) is not None:
+                    out.append((int(line["seq"]), "OUTCOME_MISSING"))
+    return out
+
+
+def verify_public(path: Path) -> int:
+    """What a reader with only the public commitments can check: the chain, contiguous `seq` and commit
+    times that never go backwards. Number of lines when intact; raises ChainError otherwise."""
+    broken = verify_chain(path)
+    if broken is not None:
+        raise ChainError(broken, f"{path.name}: prev_sha256 does not match the bytes before the line")
+    last = ""
+    lines = read_trials(path)
+    for n, line in enumerate(lines, start=1):
+        if line.get("seq") != n:
+            raise ChainError(n, f"seq {line.get('seq')} is not contiguous")
+        if "salt" in line:
+            raise ChainError(n, "a public line carries the salt")
+        if line["committed_at"] < last:
+            raise ChainError(n, "committed_at goes backwards")
+        last = line["committed_at"]
+    return len(lines)

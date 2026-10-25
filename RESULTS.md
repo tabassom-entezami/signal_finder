@@ -70,21 +70,18 @@ The last row is the lesson. A short in-sample window looked good. Seven years of
 ### What happened next
 
 - The rule is closed, and nothing is traded.
-- Further rule families were searched on a wider coin set, with every variant counted as a trial. None has an
-  edge after costs yet. The best deflated Sharpe ratio is 0.16 across 75 counted trials (0.12 at the upper count
-  of 117), far below the 0.95 bar.
+- Further rule families were searched on a wider coin set. None showed an edge after costs: the best deflated
+  Sharpe ratio was 0.16 across 75 counted trials, far below the 0.95 bar.
 - **The test itself was tested (20 October 2026).** On synthetic markets with no edge, the search-and-deflate gate
   rarely passed noise. On synthetic markets with a planted edge of the size it needs, it found the edge only about
-  two times in three, and rarely when the edge sits in a single signal. That gap is under review before the next
-  go/no-go on 31 October 2026.
-- **Stop rule.** The rules fixed before this test allow one new strategy family, pre-registered within ten
-  weeks of this result, so by late December 2026. Any search after that needs a new, dated decision, and every
-  search for a directional trading rule ends on 31 March 2027 at the latest, or earlier if the Sharpe ratio a
-  new rule would need to clear our deflated test on the available history rises above 2. Every variant tried
-  counts as a trial, so each new attempt raises that bar.
-- **In either case** the next piece of work is a forward prediction log, not built yet. Each prediction will
-  be written down and hashed before its outcome is known, then scored, so the record can be checked and cannot
-  be edited afterwards. These will be paper predictions only: no money is traded.
+  two times in three, and rarely when the edge sits in a single signal. That gap is under review.
+- **The stop rule fired on 25 October 2026.** An earlier screen of 14,528 coin-and-technique tests now also
+  counts, which lifts the effective number of trials to at least 14,571. At that count a new rule would need a
+  Sharpe ratio above 2 to pass our deflated test on the available history, so the directional search stopped. A
+  new search needs a new, dated decision.
+- **A forward prediction log now runs.** Each paper prediction is hashed before its outcome is known, then scored.
+  The first outcomes are due on 31 October 2026; nothing is claimed before 50 non-overlapping outcomes per coin.
+  These are paper predictions for research, not trading advice or signals.
 
 ## Why this result can be trusted
 

@@ -7,12 +7,14 @@ import atexit
 import importlib
 import logging
 import os
+import random
 import subprocess  # noqa: S404 - read-only git call for the prediction line's code version
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import ModuleType
 
 from signal_engine import __version__
+from signal_engine.backtest.engine import Bars
 from signal_engine.data import pit
 from signal_engine.data.bitvavo import fetch_daily, store_daily
 from signal_engine.data.book_recorder import compact_books, record_books
@@ -24,6 +26,7 @@ from signal_engine.log import setup_logging
 from signal_engine.record import predlog
 from signal_engine.settings import load_settings
 from signal_engine.validation.m1_oos import PreconditionError, RealBarSource
+from signal_engine.validation.trials import read_trials
 
 research_cli: ModuleType | None
 try:  # research commands live in a module the public copy does not ship
@@ -43,6 +46,13 @@ def _utc_datetime(value: str) -> datetime:
     """ISO date or datetime; a value without a zone is read as UTC."""
     ts = datetime.fromisoformat(value)
     return ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
+
+
+def _positive(value: str) -> int:
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"must be 1 or more, got {n}")
+    return n
 
 
 def _git_head() -> str:
@@ -81,6 +91,51 @@ def _predict(root: Path, now: datetime, log: logging.Logger) -> int:
             "today": [{"symbol": x["symbol"], **x["decision"]} for x in written if x["kind"] == "prediction"],
         },
     )
+    return 0
+
+
+def _verify_record(
+    root: Path, sample: int | None, seed: int, public: Path | None, log: logging.Logger
+) -> int:
+    """Exit 0 when every line rebuilds; 1 a broken chain, twin or stamp; 2 a replay mismatch; 3 no bars."""
+    try:
+        if public is not None:
+            log.info("verify-record public ok", extra={"lines": predlog.verify_public(public)})
+            return 0
+        record = root / "record"
+        total = predlog.verify(record, root / "ops" / predlog.STAMP)
+    except (OSError, ValueError, KeyError) as exc:  # ChainError is a ValueError
+        log.error("verify-record: record broken", extra={"error": repr(exc)})
+        return 1
+    prereg = pit.read_prereg_hash(pit.PREDLOG_SHA256_FILE)
+    lines = [x for x in read_trials(record / predlog.PREDICTIONS) if x["kind"] != "gap"]
+    seqs = None
+    if sample is not None and sample < len(lines):
+        pick = random.Random(seed)  # noqa: S311 - which lines to rebuild, not a secret
+        seqs = {int(x["seq"]) for x in pick.sample(lines, sample)}
+
+    def load_bars(at: datetime) -> Bars:
+        return RealBarSource(
+            root, prereg, at, purpose=pit.PREDLOG_PURPOSE, sha256_file=pit.PREDLOG_SHA256_FILE, known_at=at
+        ).load()
+
+    try:
+        mismatches = predlog.replay(record, load_bars, prereg, seqs)
+    except PreconditionError as exc:
+        log.error("verify-record: MISSING_DATA", extra={"error": repr(exc)})
+        return 3
+    except (OSError, ValueError, KeyError) as exc:  # a line the replay cannot read is a broken record
+        log.error("verify-record: record broken", extra={"error": repr(exc)})
+        return 1
+    head = _git_head()
+    other_code = sorted({x["code"] for x in lines if x.get("code") not in (None, head)})
+    if other_code:
+        log.warning("verify-record: lines made by another code version", extra={"code": other_code})
+    checked = len(seqs) if seqs is not None else len(lines)
+    if mismatches:
+        log.error("verify-record: replay mismatch", extra={"mismatches": mismatches, "checked": checked})
+        return 2
+    log.info("verify-record ok", extra={"lines": total, "rebuilt": checked})
     return 0
 
 
@@ -128,6 +183,11 @@ def main(argv: list[str] | None = None) -> int:
     pred = sub.add_parser("predict", help="append today's paper prediction, due outcomes and gap lines")
     pred.add_argument("--data-dir", type=Path, default=None, help="data root (default: settings.data_dir)")
     pred.add_argument("--now", type=_utc_datetime, default=None, help="UTC clock override (default: now)")
+    ver = sub.add_parser("verify-record", help="check the prediction log and rebuild each line from its data")
+    ver.add_argument("--data-dir", type=Path, default=None, help="data root (default: settings.data_dir)")
+    ver.add_argument("--sample", type=_positive, default=None, help="rebuild N random lines (default: all)")
+    ver.add_argument("--seed", type=int, default=0, help="seed for --sample")
+    ver.add_argument("--public", type=Path, default=None, help="check only this public commitments file")
     if research_cli is not None:
         research_cli.add_commands(sub)
     args = parser.parse_args(argv)
@@ -175,6 +235,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     if args.command == "predict":
         return _predict(args.data_dir or settings.data_dir, args.now or datetime.now(UTC), log)
+    if args.command == "verify-record":
+        return _verify_record(args.data_dir or settings.data_dir, args.sample, args.seed, args.public, log)
     if research_cli is not None:
         code: int | None = research_cli.run(args, settings, log)
         if code is not None:

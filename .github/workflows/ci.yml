@@ -10,7 +10,12 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned by commit (OpenSSF Scorecard)
         with:
@@ -23,6 +28,7 @@ jobs:
       - run: uv run pytest -W error
       - run: uv lock --check  # uv.lock matches pyproject.toml
       - name: pip-audit (known vulnerabilities in locked packages)
+        if: runner.os == 'Linux'  # one lockfile, one audit
         run: |
           uv export --locked --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/req.txt"
           uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/req.txt" --no-deps --disable-pip --progress-spinner off

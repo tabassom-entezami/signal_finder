@@ -43,6 +43,7 @@
 /tests/test_eurconv.py
 /tests/test_reserved.py
 /tests/test_records.py
+/tests/test_self_tools.py
 
 # Build and local files
 __pycache__/
