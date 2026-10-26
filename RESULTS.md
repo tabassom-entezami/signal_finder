@@ -82,6 +82,13 @@ The last row is the lesson. A short in-sample window looked good. Seven years of
 - **A forward prediction log now runs.** Each paper prediction is hashed before its outcome is known, then scored.
   The first outcomes are due on 31 October 2026; nothing is claimed before 50 non-overlapping outcomes per coin.
   These are paper predictions for research, not trading advice or signals.
+- **Online research reviewed (26 October 2026).** About 55 published studies were read in full, and every number
+  we use was re-checked by a second reader. None gives a reason to reopen the search. The studies of trend rules
+  on bitcoin, including the one closest to our rule, end before 2019, and a later re-test shows the edge fading
+  towards zero. The strongest machine-learning result trades a daily-rebalanced basket of small coins in a
+  rising market. Most other effects (order flow, stablecoin issuance, online attention, calendar days, intraday
+  momentum) are smaller than a round trip's trading costs, need short selling, or were never tested out of sample.
+  One candidate idea was closed on paper, and no trials were added, so the bar for any later rule did not rise.
 
 ## Why this result can be trusted
 

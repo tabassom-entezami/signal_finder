@@ -2,6 +2,7 @@
 
 import csv
 import logging
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -26,24 +27,51 @@ class HttpGet(Protocol):
 
 
 @cache
-def denied_hosts() -> frozenset[str]:
-    """Hosts the host registry stops (`list=deny` in ops/network/hosts.csv)."""
+def _hosts(kind: str) -> frozenset[str]:
     if not HOSTS_FILE.exists():
         return frozenset()
     with HOSTS_FILE.open(encoding="utf-8") as fh:
-        return frozenset(r["host"].lower().rstrip(".") for r in csv.DictReader(fh) if r.get("list") == "deny")
+        return frozenset(r["host"].lower().rstrip(".") for r in csv.DictReader(fh) if r.get("list") == kind)
+
+
+def denied_hosts() -> frozenset[str]:
+    """Hosts the host registry stops (`list=deny` in ops/network/hosts.csv)."""
+    return _hosts("deny")
+
+
+def research_hosts() -> frozenset[str]:
+    """Hosts open for reading public data only (`list=research`): no account, order or login paths."""
+    return _hosts("research")
+
+
+# account and money paths stay closed on research hosts (opinions/bitpin-research-access-2026-10-26.md)
+RESEARCH_PATH_BLOCK = re.compile(
+    r"order(?!book)|account|withdraw|deposit|wallet|user|auth|login|transfer", re.IGNORECASE
+)
+
+
+def _matches(host: str, listed: frozenset[str]) -> bool:
+    bare = host.removeprefix("www.")
+    for entry in listed:
+        root = entry.removeprefix("*.").removeprefix("www.")
+        if host == entry or bare == root or bare.endswith("." + root):
+            return True
+    return False
 
 
 def _check(url: str) -> None:
     """https only, and never a denied host or any subdomain of one (also after a redirect)."""
     if not url.startswith("https://"):
         raise ValueError(f"https only: {url}")
-    host = (urllib.parse.urlsplit(url).hostname or "").lower().rstrip(".")
-    bare = host.removeprefix("www.")
-    for denied in denied_hosts():
-        root = denied.removeprefix("www.")
-        if host == denied or bare == root or bare.endswith("." + root):
-            raise PermissionError(f"host {host} is on the deny list (ops/network/hosts.csv); fetch refused")
+    parts = urllib.parse.urlsplit(url)
+    host = (parts.hostname or "").lower().rstrip(".")
+    if _matches(host, denied_hosts()):
+        raise PermissionError(f"host {host} is on the deny list (ops/network/hosts.csv); fetch refused")
+    target = urllib.parse.unquote(urllib.parse.unquote(f"{parts.path}?{parts.query}"))  # %6Frders is /orders
+    if _matches(host, research_hosts()) and RESEARCH_PATH_BLOCK.search(target):
+        raise PermissionError(
+            f"host {host} is research-only (ops/network/hosts.csv); account or order path refused"
+        )
 
 
 class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
