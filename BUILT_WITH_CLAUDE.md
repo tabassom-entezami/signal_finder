@@ -66,6 +66,7 @@ habits into steps the model must follow. They trigger when the situation matches
 |---|---|
 | Starting anything new | Understand intent, requirements and design before any code |
 | Requirements are clear | A step-by-step plan with exact files and checks |
+| Plan approved | Work task by task, with a checkpoint after each |
 | Writing code | A failing test first, then the code that makes it pass |
 | Something breaks | The root cause with evidence before any fix |
 | About to say "done" | Run the checks and show the output; no claim without proof |
@@ -85,7 +86,8 @@ habits into steps the model must follow. They trigger when the situation matches
   and the edit tool, managers may start other agents.
 - **Code navigation by symbol.** [Serena](https://github.com/oraios/serena) runs a language server so the model
   can list a file's functions without reading it, jump to a definition and find every caller of a function. That
-  caller census is required before any signature changes, and it finds callers a text search would miss.
+  caller census is required before any signature changes, and it finds callers a text search would miss. Edits
+  and renames can also be made by symbol, which is safer than replacing text.
 - **Memory.** Plain Markdown notes in four groups: working rules and mistakes not to repeat, per-project facts and
   the current handoff, lessons by topic, and fixed bugs (symptom, cause, fix; searched before any debugging).
   Read at session start, written when something durable is learned, cleaned weekly.
@@ -158,11 +160,10 @@ Several independent layers, so no single mistake can do harm:
 
 1. **OS sandbox.** Every shell command runs in a sandbox that limits which folders can
    be written and which network hosts can be reached. Secret folders cannot be read.
-   One host deny-list feeds both the sandbox (shell commands) and a policy check on the
-   model's own web fetches and browser calls. The safety files
-   themselves (guards, hooks, settings, the host list) cannot be written from a shell
-   command at all: the founder changes them, and a model edit needs a security review
-   plus the founder's approval of that one edit. A blocked command is reported, never
+   One host deny-list is enforced by both the sandbox and a pre-tool policy check. The
+   safety files themselves (guards, hooks, settings, the host list) are write-protected:
+   a change needs either a fresh security review of that exact change or the founder's
+   approval of that one edit. A blocked command is reported, never
    worked around.
 2. **Write guard.** A hook checks every tool call before it runs. Agents are mostly
    read-only; only builder roles may edit files, and only in their area. Changes to

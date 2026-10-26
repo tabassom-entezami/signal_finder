@@ -23,10 +23,11 @@ software engineer and QA test engineer."
   line inherits contradictions; (c) zero use is not a reason to delete a role that waits for a later stage;
   (d) other tools route work by role, so role references must stay stable.
 
-### Round 1: opinions, written without reading each other
+### Round 1: opinions
 
 **Team Manager.** *Pick B* (merge only within the same rule block, keep each old role as "absorbed into" its
-host). About 50 → 34 files. Rule: merge only pairs that never check each other's work. Merges: Legal &
+host). About 50 → 34 files. Rule: merge only pairs that never check each other's work and sit in the same rule
+block. Merges: Legal &
 Compliance → Legal Adviser, Finance → Finance Researcher, Security Threat Researcher → OPSEC, Competitor → Product
 Researcher, and three more. *Not merged:* CTO + builders + QA, the founder's example: "One agent would write the
 code, test it and approve it." *Risk:* routes still point to absorbed roles and go wrong without an error; fix:
@@ -50,7 +51,7 @@ and re-audit the first output of each merged agent.
 ### Round 2: replies by name
 
 **Agent Quality Auditor → Team Manager and CTO.** Merge the System Architect into the CTO, using the CTO's own
-fallback: the implementer reviews every design record the CTO writes, so author ≠ checker still holds. On the
+fallback: a builder or the Report Analyst reviews every design record the CTO writes, so author ≠ checker still holds. On the
 literature roles: "I concede to the Team Manager." On the two threat researchers: agree, and split them again if a
 recorded disagreement between them turns up.
 
@@ -86,13 +87,14 @@ and the converged set from round 2 gives 33 files.
 The founder approved B: 33 generated files. Open points were settled by the usage data, not by more debate:
 Backend went into Quant Developer (it had been run, so it was not dormant), the literature roles merged into the
 one that had been used, and the Tax & Legal Researcher stayed whole (the Team Manager's point: a split makes the
-tax role check its own research). The checker had also caught a wrong claim in the build notes, fixed in the same
-change.
+tax role check its own research). The build in turn corrected one of the checker's own claims: a word it had
+called a routing trigger was an agent name.
 
 **What to notice.**
-- Opinions are written before anyone reads the others, so the first answer is not an echo.
+- Each role states its own choice before the replies round, so every disagreement is on record.
 - Every concession names who it answers and why.
-- The checker caught two wrong numbers in the authors' claims. Both authors were confident.
+- The checker caught two wrong numbers: one in the facts gathered first, one in an author's count. The build
+  then corrected the checker once: checking runs both ways.
 - The founder's own example got a direct "no" with the reason, not a softened answer.
 - The decision says what evidence would reverse it.
 

@@ -67,7 +67,7 @@
 - **No personal data.** Author names, usernames, avatars and addresses are dropped at fetch time; news rows keep no prices.
 
 **How the data is checked.**
-- **A registry row before any use.** Each dataset has one row: which project stage its licence allows, whether it is point-in-time safe, where it is stored, its owner, its refresh cadence and a better source to watch. A dataset without a row is not used; one that is not point-in-time safe never enters a backtest. A check fails on a missing licence or point-in-time value, or on an owner that is not a real role, and runs after every work round.
+- **A registry row before any use.** Each dataset has one row: which project stage its licence allows, whether it is point-in-time safe, where it is stored, its owner, its refresh cadence and a better source to watch. A dataset without a row is not used, and one that is not point-in-time safe is not used in a backtest. A check fails on a missing licence or point-in-time value, on an active dataset that is not point-in-time safe, or on an owner that is not a real role, and runs after every work round.
 - **Fresh, without reading prices.** A refresh job updates what is due, then warns when a dataset is behind (it reads only timestamps) or when its licence was last read too long ago. A better source replaces a row only after it is measured.
 - **Held-out data is locked.** The loader opens test data only when the hash of the frozen rules file matches its recorded hash, so the rules cannot change after the data is seen.
 - **Times are explicit.** A timestamp without a timezone is refused.
