@@ -42,6 +42,60 @@ fixed rules.
 - **Hooks and guards** are small programs Claude Code runs before and after tool
   calls. They enforce rules in code instead of trusting the model to remember them.
 
+### The instruction files
+
+| File | Shared | Loaded | Purpose |
+|---|---|---|---|
+| `CLAUDE.md` | yes | every session | Project rules, workflow, commands, stack, lessons learned |
+| `CLAUDE.local.md` | no | every session | Personal additions; never contradicts the shared file |
+| `AGENTS.md` | yes | by other coding tools | A generated copy of the rules for non-Claude agents |
+| `CONTEXT.md` | yes | on demand, by skills | Shared facts (project profile, repos, tool routing), so skills point to one place instead of copying them |
+| Definition of done | yes | when building or reviewing | The checks a change must pass: every caller found, data flow traced, tests mapped, blast radius stated |
+| Path rules | yes | only when matching files change | Narrow rules (for example infrastructure) that would otherwise bloat the main file |
+| The plan file | no | during work | Objective, checklist, test command per step, review notes; it survives context resets |
+
+Why several files: the model's context is limited. Always-loaded files hold rules only, facts live in one
+shared file, long procedures live in skills, and narrow rules load only when they apply.
+
+### The discipline layer
+
+[Superpowers](https://github.com/obra/superpowers) is a plugin of process skills that turn good engineering
+habits into steps the model must follow. They trigger when the situation matches:
+
+| Situation | What it forces |
+|---|---|
+| Starting anything new | Understand intent, requirements and design before any code |
+| Requirements are clear | A step-by-step plan with exact files and checks |
+| Writing code | A failing test first, then the code that makes it pass |
+| Something breaks | The root cause with evidence before any fix |
+| About to say "done" | Run the checks and show the output; no claim without proof |
+| Work finished or reviewed | A fresh reviewer checks the change; each review comment is verified, not blindly accepted |
+| Several independent tasks | Split across agents running in parallel |
+
+### Skills, agents, code navigation and memory
+
+- **Skills.** A skill is a folder with a description and a procedure (plus optional scripts). Only its name and
+  one-line description stay in context; the full text loads when the task matches. There are process skills (how
+  to work), task skills (plan, review, security review, recompute a report from raw data) and memory skills (save
+  lessons, clean memory weekly, write a handoff). Rule of thumb: a procedure explained to the model twice becomes
+  a skill.
+- **Agents.** Read-only search agents, planning agents, fresh-context reviewers (they see the diff without the
+  author's reasoning) and builders (only when asked). Here every agent is generated from one role-definition file
+  plus a quality-standards file and shared rules: researchers get the research rules, builders get the build rules
+  and the edit tool, managers may start other agents.
+- **Code navigation by symbol.** [Serena](https://github.com/oraios/serena) runs a language server so the model
+  can list a file's functions without reading it, jump to a definition and find every caller of a function. That
+  caller census is required before any signature changes, and it finds callers a text search would miss.
+- **Memory.** Plain Markdown notes in four groups: working rules and mistakes not to repeat, per-project facts and
+  the current handoff, lessons by topic, and fixed bugs (symptom, cause, fix; searched before any debugging).
+  Read at session start, written when something durable is learned, cleaned weekly.
+- **Other tools, added only when a task needs them:** current library documentation instead of guessing, the git
+  host for pull requests and CI results, and IDE diagnostics.
+- **Right agent, right data, fresh data, checked by code.** Every task goes to the role named in a routing table,
+  and every owner named in the data registry must be a real role. Data is used only after it has a registry row
+  (licence, point-in-time safety, storage, owner), and a refresh job warns when it is behind. See
+  [ARCHITECTURE.md](ARCHITECTURE.md) section 3.
+
 ## 2. The workflow
 
 1. **Brainstorm:** for any non-trivial change, explore intent and design first and ask
@@ -104,6 +158,12 @@ Several independent layers, so no single mistake can do harm:
 
 1. **OS sandbox.** Every shell command runs in a sandbox that limits which folders can
    be written and which network hosts can be reached. Secret folders cannot be read.
+   One host deny-list feeds both the sandbox (shell commands) and a policy check on the
+   model's own web fetches and browser calls. The safety files
+   themselves (guards, hooks, settings, the host list) cannot be written from a shell
+   command at all: the founder changes them, and a model edit needs a security review
+   plus the founder's approval of that one edit. A blocked command is reported, never
+   worked around.
 2. **Write guard.** A hook checks every tool call before it runs. Agents are mostly
    read-only; only builder roles may edit files, and only in their area. Changes to
    the safety controls themselves need a security review first.

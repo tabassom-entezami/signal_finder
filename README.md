@@ -78,6 +78,7 @@ Copy `.env.example` to `.env`. Every setting is optional: `LOG_LEVEL` (default `
 - [HOW_WE_USE_AI.md](HOW_WE_USE_AI.md): the role of Claude in the product
 - [BUILT_WITH_CLAUDE.md](BUILT_WITH_CLAUDE.md): how the project is built with Claude Code
 - [AGENT_TEAM.md](AGENT_TEAM.md): the agent team by name, how they work together, their safety rules and how the owner uses them
+- [HOW_WE_WORK.md](HOW_WE_WORK.md): a real agent discussion (shortened), how findings, risks and data are kept
 
 ## How this was built: an AI agent team
 

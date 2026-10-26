@@ -104,6 +104,8 @@ FROM decide_forecasts_current AS f
 JOIN decide_forecast_resolutions_current AS r ON r.forecast_id = f.id
 LEFT JOIN ops_agent_runs AS a ON a.id = f.agent_run_id
 WHERE lower(trim(f.source)) <> 'backfill' -- a backfilled p is ex-post by construction: kept, never calibrated
+  -- an unscorable line's outcome is a fixed placeholder 0; IS NOT keeps lines without a class (NULL)
+  AND r.error_class IS NOT 'unscorable'
 GROUP BY coalesce(a.persona, f.owner), substr(r.created_utc, 1, 7);
 
 -- Forecast scorecard per forecaster and month, read after each round: scored n, the Brier score (shown from
@@ -129,6 +131,17 @@ SELECT forecaster, month, sum(scored) AS n_scored, count(*) - sum(scored) AS n_u
   sum(error_class IS 'noise') AS noise
 FROM s
 GROUP BY forecaster, month;
+
+-- Forecasts past their resolve-by time with no current resolution: otherwise they would be in neither view
+-- above and silently dropped. after_round.py fails while any row is listed.
+DROP VIEW IF EXISTS decide_forecasts_overdue;
+CREATE VIEW decide_forecasts_overdue AS
+SELECT f.id, f.owner, f.source, f.claim, f.resolve_by_utc
+FROM decide_forecasts_current AS f
+WHERE lower(trim(f.source)) <> 'backfill'
+  AND f.resolve_by_utc IS NOT NULL
+  AND substr(f.resolve_by_utc, 1, 19) < strftime('%Y-%m-%dT%H:%M:%S', 'now')
+  AND NOT EXISTS (SELECT 1 FROM decide_forecast_resolutions_current AS r WHERE r.forecast_id = f.id);
 
 DROP VIEW IF EXISTS score_decision_reviews;
 CREATE VIEW score_decision_reviews AS

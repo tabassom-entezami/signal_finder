@@ -92,7 +92,7 @@ class RealBarSource:
         self.now = now  # the clock for dropping unfinished bars; None = the wall clock
         self.purpose = purpose
         self.sha256_file = sha256_file
-        # verify-record only: keep the Bitvavo bars first ingested by this time (null = unknown, dropped)
+        # verify-record: keep the Bitvavo bars first ingested before this time; None = ingested by `now`
         self.known_at = known_at
 
     def load(self) -> Bars:
@@ -120,11 +120,10 @@ class RealBarSource:
                 sha256_file=self.sha256_file,
             )
             table = pit.closed(table, now)
-            if self.known_at is not None:
-                # strictly before: a fetch started in the same millisecond as the run writes after it reads
-                before = self.known_at - timedelta(milliseconds=1)
-                table = pit.as_of(table, before, column="first_available_time")
-            return table
+            # A bar is known at `now` only if it was also stored by then (null ingest time = dropped).
+            # With known_at, strictly before: a fetch started in the run's millisecond writes after it reads.
+            cutoff = now if self.known_at is None else self.known_at - timedelta(milliseconds=1)
+            return pit.as_of(table, cutoff, column="first_available_time")
 
         ecb_fixes = pit.load(self.data_dir, ecb.SOURCE, ecb.SYMBOL)
         usdc_eur = bitvavo_closed("USDC-EUR")

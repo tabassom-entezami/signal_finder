@@ -121,7 +121,7 @@ def as_of(table: pa.Table, t: datetime, *, column: str | None = None) -> pa.Tabl
     "first_available_time" use that column only (null = not available)."""
     t_ms = _ms(t)
     times = available_time(table) if column is None else table.column(column).to_pylist()
-    return table.filter(pa.array([v is not None and v <= t_ms for v in times]))
+    return table.filter(pa.array([v is not None and v <= t_ms for v in times], type=pa.bool_()))  # empty-safe
 
 
 def load(

@@ -66,6 +66,14 @@
 - **History is not rewritten.** A closed bar that changes on a later fetch is logged as a revision, not silently replaced.
 - **No personal data.** Author names, usernames, avatars and addresses are dropped at fetch time; news rows keep no prices.
 
+**How the data is checked.**
+- **A registry row before any use.** Each dataset has one row: which project stage its licence allows, whether it is point-in-time safe, where it is stored, its owner, its refresh cadence and a better source to watch. A dataset without a row is not used; one that is not point-in-time safe never enters a backtest. A check fails on a missing licence or point-in-time value, or on an owner that is not a real role, and runs after every work round.
+- **Fresh, without reading prices.** A refresh job updates what is due, then warns when a dataset is behind (it reads only timestamps) or when its licence was last read too long ago. A better source replaces a row only after it is measured.
+- **Held-out data is locked.** The loader opens test data only when the hash of the frozen rules file matches its recorded hash, so the rules cannot change after the data is seen.
+- **Times are explicit.** A timestamp without a timezone is refused.
+- **Records cannot be quietly edited.** The records store is append-only, and every append is sealed by a line in a hash-chained manifest; its check verifies integrity, the chain and that every rendered report still matches the stored rows, and a second check fails when the store drifts from its source files.
+- **Numbers are recomputed by someone else.** Before a report is used, a checker who did not write it recomputes its numbers from the raw data with a different method (see [HOW_WE_WORK.md](HOW_WE_WORK.md)).
+
 ## 4. How the recorders work
 
 - **Order-book recorder.** On a fixed time grid it stores the top levels of each symbol's public book plus the venue's market status string ("trading", "halted", "auction", ...). It is built to capture maintenance halts and reopens. A failed fetch never stops the run; it becomes a row with an `error` field.

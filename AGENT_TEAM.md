@@ -82,7 +82,7 @@ A worked example. The founder asks: "Which storage should a new data job use?"
 
 1. **Use what exists first.** The team manager role checks the project's own research database, earlier discussions and the decision record. If one query or one existing, verified answer settles it, no agent is started.
 2. **Ask the owners.** Otherwise the manager picks the two or three roles that own the topic (here: the architect, the data engineer, the quality engineer). A small routing hook suggests them from the words of the question. Each gets a short brief: the question, the facts already found with their source, two or three options, and a fixed budget of tool calls.
-3. **One shared thread.** Every role writes its opinion into the same discussion file: a choice, why, the risk, and what would change its mind. Nobody edits another's section.
+3. **One shared thread.** Every role writes its opinion into the same discussion file: a choice, why, the risk, and what would change its mind. Nobody edits another's section. A real, shortened thread is in [HOW_WE_WORK.md](HOW_WE_WORK.md).
 4. **Replies by name.** In the next round each role reads the whole thread and answers the others by name: "Architect: agree, but…", "Data engineer: disagree, because the measured size is…". A role that needs something from another writes a question addressed to that role; the thread is not complete until that role has written the answer. The next-round prompt is fixed text, so the manager cannot steer the answer with its own summary.
 5. **Round limit.** Each role gets at most four replies. Then the manager closes the thread and records every open question as carried to a named owner or to the founder. Discussions that can be reopened forever never converge.
 6. **Independent check.** A role that wrote nothing in the thread re-runs the measured claims on the real data, using a different method than the author: parse the file instead of searching its text, query the table instead of counting files, recompute instead of re-reading. A re-run by the author's own method counts as unverified, not confirmed. A tool refuses a checker section that does not state its method.
@@ -137,7 +137,7 @@ The founder writes plain requests:
 - **"Research X"**: the owner roles look up existing work, then search primary sources in the languages where the answer lives, and a checker verifies the claims.
 - **"Plan Y"**: open questions come back in one batch, then a plan with a checklist and a test command per step waits for review.
 - **"Build Z"**: work starts only from an approved plan.
-- **"Run …"**: a short word starts a routine job, such as refreshing data, collecting the day's feeds or rebuilding the dashboard after a round. Nothing runs on a schedule except a small recorder and its health check.
+- **"Run …"**: a short word starts a routine job, such as refreshing data, collecting the day's feeds or rebuilding the dashboard after a round. Nothing runs on a schedule: jobs run only while the founder is working.
 
 What comes back is one short report per round under three headings: **Blocked on me** (only what needs the founder), **Changed** (every file and why) and **Found** (new facts and problems, with their source). Decisions arrive in the five-part format, never as a bare "approve?". The team also looks for gaps itself each round, so the founder should never have to add a missing item.
 
