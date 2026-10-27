@@ -9,13 +9,16 @@ legacy rows) means `close_time`, so a backtest sees history at its close, not at
 Archive rows carry `first_available_time = close_time` and fall under the same rule.
 
 Loader lock: coin bars (every base asset except USDC/USDT/EUR/USD) at or after 2019-08-17 are only
-loaded by a call that passes a rules-file hash and a purpose in SCOPE ("m1-oos", "predlog"), and only
-while the rules-file text still hashes to its record (the frozen rules file and its .sha256 line).
+loaded by a call that passes a rules-file hash and a purpose in SCOPE ("m1-oos", "predlog", "forward"),
+and only while the rules-file text still hashes to its record (the frozen rules file and its .sha256 line).
+The "forward" purpose runs a frozen rule forward from its hash time: it opens every base asset, but only
+for a range that starts on or after the first UTC day starting after the `# hashed_utc <ISO time>` on
+line 2 of the .sha256 record; an earlier or open (None) start is refused, never trimmed.
 The range is checked before any file is read, so a locked bar never enters memory.
 """
 
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -31,11 +34,14 @@ UNLOCKED_ASSETS = ("USDC", "USDT", "EUR", "USD")
 QUOTES = ("USDT", "USDC", "EUR", "USD")
 PURPOSE = "m1-oos"
 PREDLOG_PURPOSE = "predlog"  # the forward paper prediction log runs the frozen B1.1.0 rule on today's bars
+FORWARD_PURPOSE = "forward"  # a frozen rule run forward from its hash time, every coin, post-hash days only
+ALL_ASSETS = ("*",)
 # A key opens only the coins its frozen rules test: the M1 key never opens the altcoins held
 # back for the next family (they get their own purpose and hash).
-SCOPE = {PURPOSE: ("BTC", "ETH"), PREDLOG_PURPOSE: ("BTC", "ETH")}
+SCOPE = {PURPOSE: ("BTC", "ETH"), PREDLOG_PURPOSE: ("BTC", "ETH"), FORWARD_PURPOSE: ALL_ASSETS}
 PREREG_SHA256_FILE = Path(__file__).resolve().parents[3] / "docs" / "reports" / "m1-preregistration.sha256"
 PREDLOG_SHA256_FILE = PREREG_SHA256_FILE.with_name("predlog-preregistration.sha256")
+HASHED_UTC_TAG = ("#", "hashed_utc")
 
 
 class LoaderLockError(PermissionError):
@@ -47,19 +53,45 @@ def read_prereg_hash(path: Path = PREREG_SHA256_FILE) -> str:
     return path.read_text().split()[0]
 
 
+def forward_start(sha256_file: Path) -> datetime | None:
+    """First UTC day that starts strictly after the hash time on line 2 (`# hashed_utc <ISO>Z`) of the
+    .sha256 record; None when the line is missing, unparseable or not timezone-aware."""
+    if not sha256_file.exists():
+        return None
+    lines = sha256_file.read_text().splitlines()
+    parts = lines[1].split() if len(lines) > 1 else []
+    if len(parts) < 3 or tuple(parts[:2]) != HASHED_UTC_TAG:
+        return None
+    try:
+        hashed = datetime.fromisoformat(parts[2])
+    except ValueError:
+        return None
+    if hashed.tzinfo is None:
+        return None
+    day = hashed.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    return day + timedelta(days=1)
+
+
 def is_unlocked(
     prereg_hash: str | None,
     purpose: str | None,
     sha256_file: Path = PREREG_SHA256_FILE,
     symbol: str | None = None,
+    *,
+    start: datetime | None = None,
 ) -> bool:
     """True only when the given hash, the .sha256 record and the digest of the rules-file
-    text next to it (same name, .md) all agree: an edited rules file never unlocks."""
+    text next to it (same name, .md) all agree: an edited rules file never unlocks.
+    Under the "forward" purpose `start` must also be on or after `forward_start(sha256_file)`."""
     text = sha256_file.with_suffix(".md")
     if prereg_hash is None or purpose not in SCOPE or not sha256_file.exists() or not text.exists():
         return False
-    if symbol is not None and base_asset(symbol) not in SCOPE[purpose]:
+    if symbol is not None and SCOPE[purpose] != ALL_ASSETS and base_asset(symbol) not in SCOPE[purpose]:
         return False
+    if purpose == FORWARD_PURPOSE:
+        first = forward_start(sha256_file)
+        if start is None or first is None or _ms(start) < _ms(first):
+            return False
     digest = hashlib.sha256(text.read_bytes()).hexdigest()
     return prereg_hash == read_prereg_hash(sha256_file) == digest
 
@@ -137,11 +169,19 @@ def load(
 ) -> pa.Table:
     """Stored bars of `raw/<source>/<symbol>/` with `start <= ts < end`, sorted by ts.
 
-    Raises LoaderLockError when the range reaches the OOS window for a coin without the unlock.
+    Raises LoaderLockError when the range reaches the OOS window for a coin without the unlock,
+    and for any symbol under the "forward" purpose when the range starts before the post-hash day.
     """
     end_ms = None if end is None else _ms(end)
+    if purpose == FORWARD_PURPOSE and not is_unlocked(prereg_hash, purpose, sha256_file, symbol, start=start):
+        first = forward_start(sha256_file)
+        first_day = first.date() if first else "no hashed_utc line in " + sha256_file.name
+        raise LoaderLockError(
+            f"{symbol}: purpose {FORWARD_PURPOSE!r} loads only a range starting on or after the first "
+            f"UTC day after the hash time ({first_day}), with the matching prereg_hash; got start={start}"
+        )
     if is_locked_symbol(symbol) and (end_ms is None or end_ms > _ms(OOS_START)):
-        if not is_unlocked(prereg_hash, purpose, sha256_file, symbol):
+        if not is_unlocked(prereg_hash, purpose, sha256_file, symbol, start=start):
             raise LoaderLockError(
                 f"{symbol}: bars on or after {OOS_START.date()} are held-out OOS data; pass "
                 f"end <= {OOS_START.date()}, or prereg_hash (from {sha256_file.name}) and purpose={PURPOSE!r}"

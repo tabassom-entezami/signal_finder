@@ -9,6 +9,7 @@ A stored closed bar is never overwritten: a re-fetch with different values is lo
 import logging
 import time
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -94,6 +95,44 @@ def find_gaps(ts: Sequence[int]) -> list[int]:
     return [t for t in range(ts[0], ts[-1] + DAY_MS, DAY_MS) if t not in have]
 
 
+class MarketCandles:
+    """Bitvavo's `/{market}/candles` endpoint through ccxt's implicit public API, without ccxt's local
+    market lookup: `fetch_ohlcv` raises for a market missing from ccxt's cached `/markets` list, so a
+    delisted market's own candles answer could never be asked for. Same window as ccxt's `fetch_ohlcv`
+    (`start = since`, `end = since + limit days`); rows are parsed like ccxt's `parse_ohlcv`."""
+
+    def __init__(self, exchange: Any = None) -> None:
+        self.exchange = exchange if exchange is not None else ccxt.bitvavo({"enableRateLimit": True})
+
+    def fetch_ohlcv(
+        self, symbol: str, timeframe: str, since: int | None, limit: int | None
+    ) -> list[list[Any]]:
+        if timeframe != "1d" or since is None or limit is None:
+            raise ValueError("MarketCandles answers daily windows with since and limit only")
+        request = {
+            "market": symbol.replace("/", "-").upper(),
+            "interval": "1d",
+            "start": since,
+            "end": since + limit * DAY_MS,
+            "limit": limit,
+        }
+        answer = self.exchange.publicGetMarketCandles(request)
+        if not isinstance(answer, list):
+            raise ValueError(f"candles answer is not a list: {type(answer).__name__}")
+        return [[int(r[0]), *(float(v) for v in r[1:6])] for r in answer]
+
+
+@dataclass(frozen=True)
+class DailyFetch:
+    """A fetch with the windows it covered: each `(start_ms, end_ms)` window got a parsed answer
+    (an empty list included), so a day inside a covered window with no bar was answered "no candle",
+    not a fetch error."""
+
+    table: pa.Table
+    gaps: list[int]
+    windows: list[tuple[int, int]]
+
+
 def fetch_daily(
     symbol: str,
     since: datetime,
@@ -101,6 +140,17 @@ def fetch_daily(
     now: datetime | None = None,
 ) -> tuple[pa.Table, list[int]]:
     """Closed daily bars from `since` (UTC-aware) to now; returns (table, gap bar starts in ms)."""
+    result = fetch_daily_windows(symbol, since, exchange, now)
+    return result.table, result.gaps
+
+
+def fetch_daily_windows(
+    symbol: str,
+    since: datetime,
+    exchange: OhlcvExchange | None = None,
+    now: datetime | None = None,
+) -> DailyFetch:
+    """`fetch_daily` plus the covered windows; any fetch error (after the retries) is raised."""
     if since.tzinfo is None:
         raise ValueError("since must be timezone-aware UTC (point-in-time rule)")
     now = now or datetime.now(UTC)
@@ -112,9 +162,11 @@ def fetch_daily(
     now_ms = int(now.timestamp() * 1000)
 
     rows: list[list[Any]] = []
+    windows: list[tuple[int, int]] = []
     cursor = since_ms
     while cursor <= now_ms:
         page = [r for r in _fetch_page(exchange, symbol, cursor) if int(r[0]) >= since_ms]
+        windows.append((cursor, min(cursor + PAGE_LIMIT * DAY_MS, now_ms)))
         rows.extend(page)
         if page:
             cursor = max(max(int(r[0]) for r in page), cursor) + DAY_MS
@@ -133,7 +185,7 @@ def fetch_daily(
         log.warning(
             "candle gaps", extra={"symbol": symbol, "gap_count": len(gaps), "gaps": [_iso(t) for t in gaps]}
         )
-    return table, gaps
+    return DailyFetch(table, gaps, windows)
 
 
 def _store_revisions(rows: list[dict[str, Any]], root: Path, store_symbol: str, month: datetime) -> None:

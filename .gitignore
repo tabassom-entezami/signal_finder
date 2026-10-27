@@ -15,6 +15,7 @@
 !/AGENT_TEAM.md
 !/RESULTS.md
 !/ROADMAP.md
+!/M1_RULES.md
 !/src/
 !/tests/
 # The verbatim report of the first out-of-sample test; the rest of docs/ stays private
@@ -34,6 +35,9 @@
 /src/signal_engine/records/import_traders.py
 /src/signal_engine/records/import_raw.py
 /src/signal_engine/records/keys.py
+/src/signal_engine/record/hmax_log.py
+/src/signal_engine/strategy/hmax.py
+/src/signal_engine/validation/hmax_band.py
 /tests/test_ops_tools.py
 /tests/test_agent_evals.py
 /tests/test_network_hosts.py
@@ -45,6 +49,9 @@
 /tests/test_reserved.py
 /tests/test_records.py
 /tests/test_self_tools.py
+/tests/test_hmax_log.py
+/tests/test_hmax.py
+/tests/test_hmax_cli.py
 
 # Build and local files
 __pycache__/
