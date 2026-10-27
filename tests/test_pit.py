@@ -14,6 +14,7 @@ from signal_engine.data.pit import (
     assert_grid,
     available_time,
     closed,
+    forward_start,
     is_locked_symbol,
     is_unlocked,
     load,
@@ -207,3 +208,106 @@ def test_the_lock_opens_exactly_up_to_the_oos_start(store: Path) -> None:
     assert load(store, "bitvavo", "BTC-EUR", end=oos, sha256_file=sha).num_rows == 2
     with pytest.raises(LoaderLockError):
         load(store, "bitvavo", "BTC-EUR", end=oos + timedelta(milliseconds=1), sha256_file=sha)
+
+
+# Forward purpose: a frozen rule run forward from its hash time (line 2 of the .sha256 record).
+HASHED_UTC = "2026-10-26T22:12:21Z"
+FIRST_DAY = datetime(2026, 10, 27, tzinfo=UTC)
+FWD_DAYS = ["2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28"]
+
+
+@pytest.fixture
+def fwd(tmp_path: Path) -> Path:
+    """Synthetic altcoin, BTC and USDC bars around the hash day, plus a rules file hashed at HASHED_UTC."""
+    for symbol in ("SOL-EUR", "BTC-EUR", "USDC-EUR"):
+        write_partition(_bars(FWD_DAYS), tmp_path, "bitvavo", symbol, datetime(2026, 10, 1, tzinfo=UTC))
+    (tmp_path / "fwd.sha256").write_text(f"{HASH}  fwd.md\n# hashed_utc {HASHED_UTC} (test)\n")
+    (tmp_path / "fwd.md").write_bytes(PREREG_TEXT)
+    return tmp_path
+
+
+def _fwd_load(root: Path, symbol: str, start: datetime | None, prereg_hash: str = HASH) -> pa.Table:
+    return load(
+        root,
+        "bitvavo",
+        symbol,
+        start=start,
+        prereg_hash=prereg_hash,
+        purpose="forward",
+        sha256_file=root / "fwd.sha256",
+    )
+
+
+def test_forward_unlocks_post_hash_only(fwd: Path) -> None:
+    sha = fwd / "fwd.sha256"
+    assert forward_start(sha) == FIRST_DAY
+    for symbol in ("SOL-EUR", "BTC-EUR", "USDC-EUR"):  # every base asset, the altcoins included
+        table = _fwd_load(fwd, symbol, FIRST_DAY)
+        assert table.column("ts").to_pylist() == [_ms("2026-10-27"), _ms("2026-10-28")]
+    assert is_unlocked(
+        HASH, "forward", sha, "SOL-EUR", start=FIRST_DAY
+    )  # the direct check used by other loaders
+    assert not is_unlocked(HASH, "forward", sha, "SOL-EUR", start=FIRST_DAY - timedelta(milliseconds=1))
+    # a hash exactly at midnight: that day does not start after the hash, the next one is the first
+    (fwd / "mid.sha256").write_text(f"{HASH}  mid.md\n# hashed_utc 2026-10-27T00:00:00Z\n")
+    assert forward_start(fwd / "mid.sha256") == datetime(2026, 10, 28, tzinfo=UTC)
+    with pytest.raises(LoaderLockError):  # a wrong hash keeps the lock closed
+        _fwd_load(fwd, "SOL-EUR", FIRST_DAY, prereg_hash="cd" * 32)
+
+
+def test_forward_refuses_range_starting_pre_hash(fwd: Path) -> None:
+    for symbol in ("SOL-EUR", "BTC-EUR", "USDC-EUR"):  # refused, not trimmed, even for open cash series
+        with pytest.raises(LoaderLockError, match="2026-10-27"):
+            _fwd_load(fwd, symbol, datetime(2026, 10, 26, 23, 59, tzinfo=UTC))
+    with pytest.raises(LoaderLockError):  # the hash time itself is still pre-hash day
+        _fwd_load(fwd, "SOL-EUR", datetime(2026, 10, 26, 22, 12, 21, tzinfo=UTC))
+
+
+def test_forward_refuses_start_none(fwd: Path) -> None:
+    sha = fwd / "fwd.sha256"
+    with pytest.raises(LoaderLockError):
+        _fwd_load(fwd, "SOL-EUR", None)
+    assert not is_unlocked(HASH, "forward", sha, "SOL-EUR")
+    assert not is_unlocked(HASH, "forward", sha)
+    # a record without the hashed_utc line never opens the forward purpose
+    (fwd / "nohash.sha256").write_text(f"{HASH}  nohash.md\n")
+    (fwd / "nohash.md").write_bytes(PREREG_TEXT)
+    assert forward_start(fwd / "nohash.sha256") is None
+    assert not is_unlocked(HASH, "forward", fwd / "nohash.sha256", "SOL-EUR", start=FIRST_DAY)
+    (fwd / "bad.sha256").write_text(f"{HASH}  bad.md\n# hashed_utc 2026-10-26T22:12:21\n")  # naive time
+    assert forward_start(fwd / "bad.sha256") is None
+    with pytest.raises(ValueError, match="UTC"):  # a naive start is a point-in-time error, not a lock answer
+        _fwd_load(fwd, "SOL-EUR", datetime(2026, 10, 27))
+
+
+def test_forward_refuses_edited_rules(fwd: Path) -> None:
+    (fwd / "fwd.md").write_bytes(PREREG_TEXT + b"edited\n")
+    with pytest.raises(LoaderLockError):
+        _fwd_load(fwd, "SOL-EUR", FIRST_DAY)
+    assert not is_unlocked(HASH, "forward", fwd / "fwd.sha256", "SOL-EUR", start=FIRST_DAY)
+
+
+def test_existing_purposes_unchanged(fwd: Path, store: Path) -> None:
+    # m1-oos and predlog still open BTC/ETH only, ignore `start`, and never open an altcoin
+    sha = store / "prereg.sha256"
+    end = datetime(2020, 1, 1, tzinfo=UTC)  # both fixtures share tmp_path: keep the 2019 bars only
+    for purpose in ("m1-oos", "predlog"):
+        assert (
+            load(
+                store, "bitvavo", "BTC-EUR", end=end, prereg_hash=HASH, purpose=purpose, sha256_file=sha
+            ).num_rows
+            == 4
+        )
+        assert is_unlocked(HASH, purpose, sha, "ETH-EUR")
+        assert not is_unlocked(HASH, purpose, sha, "SOL-EUR", start=FIRST_DAY)
+    # the forward record does not widen the other purposes either
+    with pytest.raises(LoaderLockError):
+        load(
+            fwd,
+            "bitvavo",
+            "SOL-EUR",
+            start=FIRST_DAY,
+            prereg_hash=HASH,
+            purpose="predlog",
+            sha256_file=fwd / "fwd.sha256",
+        )

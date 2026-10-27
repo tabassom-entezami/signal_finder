@@ -9,7 +9,7 @@ import pytest
 
 from signal_engine.__main__ import main
 from signal_engine.data import bitvavo
-from signal_engine.data.bitvavo import DAY_MS, fetch_daily, store_daily
+from signal_engine.data.bitvavo import DAY_MS, MarketCandles, fetch_daily, fetch_daily_windows, store_daily
 from signal_engine.storage import read_partition, write_partition
 
 D0 = datetime(2026, 9, 28, tzinfo=UTC)
@@ -240,3 +240,44 @@ def test_cli_fetch_candles_requires_symbol() -> None:
     with pytest.raises(SystemExit) as exc:
         main(["fetch-candles", "--since", "2020-01-01"])
     assert exc.value.code == 2
+
+
+def test_fetch_daily_windows_reports_covered_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Each answered window is reported, an empty one included (HTTP-200, no candle), so a caller can tell
+    # "no bar in a covered window" from a fetch error, which still raises.
+    monkeypatch.setattr(bitvavo, "PAGE_LIMIT", 2)
+    now = _now(5.5)
+    result = fetch_daily_windows(
+        "BTC/EUR", D0 - timedelta(days=3), exchange=FakeExchange([_bar(i) for i in range(5)]), now=now
+    )
+    starts = [w[0] for w in result.windows]
+    assert starts[0] == _day(-3) and result.windows[1] == (_day(-1), _day(1))  # the first window was empty
+    assert result.windows[-1][1] == int(now.timestamp() * 1000)
+    table, gaps = fetch_daily(
+        "BTC/EUR", D0 - timedelta(days=3), exchange=FakeExchange([_bar(i) for i in range(5)]), now=now
+    )
+    assert table.equals(result.table) and gaps == result.gaps  # the old return shape is unchanged
+    with pytest.raises(ccxt.BadSymbol):
+        fetch_daily_windows("BTC/EUR", D0, exchange=FakeExchange([], errors=[ccxt.BadSymbol("x")]), now=now)
+
+
+def test_market_candles_asks_the_market_endpoint_without_local_lookup() -> None:
+    class Raw:
+        def __init__(self) -> None:
+            self.requests: list[dict[str, Any]] = []
+
+        def publicGetMarketCandles(self, request: dict[str, Any]) -> Any:  # noqa: N802 (ccxt name)
+            self.requests.append(request)
+            return [[_day(1), "1.5", "2", "1", "1.75", "12.5"], [_day(0), "1", "2", "0.5", "1.5", "0"]]
+
+    raw = Raw()
+    rows = MarketCandles(raw).fetch_ohlcv("GONE/EUR", "1d", since=_day(0), limit=1440)
+    assert raw.requests == [
+        {"market": "GONE-EUR", "interval": "1d", "start": _day(0), "end": _day(1440), "limit": 1440}
+    ]
+    assert rows[1] == [_day(0), 1.0, 2.0, 0.5, 1.5, 0.0] and all(isinstance(v, float) for v in rows[0][1:])
+    table, _ = fetch_daily("GONE/EUR", D0, exchange=MarketCandles(raw), now=_now(2.5))
+    assert table.column("close").to_pylist() == [1.5, 1.75]
+    raw.publicGetMarketCandles = lambda request: {"errorCode": 205}  # type: ignore[method-assign]
+    with pytest.raises(ValueError, match="not a list"):
+        MarketCandles(raw).fetch_ohlcv("GONE/EUR", "1d", since=_day(0), limit=1440)

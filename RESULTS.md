@@ -107,6 +107,7 @@ The last row is the lesson. A short in-sample window looked good. Seven years of
 | Artefact | SHA-256 |
 |---|---|
 | Rules file, frozen before the run | `9352c2954a200c40413096dcacd4bda07707879a131e682dc1b50c21d5679aa0` |
+| Redacted copy of the rules file, [M1_RULES.md](M1_RULES.md) | `84ce539888fc8e790f29bebaeb39b0fd29ea009769ccf4fdea8a2ed81fce1c2f` |
 | Input data | `458a1cde7fb4608ac75e3b6b48cfd8e895d2b0f85e1457e79ca59ec44d993404` |
 | Result file, as saved | `e219bcdfca2ccf9b9f88ca84c564e8575baf69307304703a655a47293be25f21` |
 | Result content (the result JSON without its own `result_sha256` field) | `ecfac932a2547872249dead42dfa1e568aa9c7a5f13be601a6e216936c79a928` |
@@ -124,14 +125,14 @@ What a reader can and cannot reproduce from this repository today:
 | Artefact | In this repository | What you can do |
 |---|---|---|
 | Code: rule, backtest loop, gates, Monte Carlo, the `m1-oos` run | yes | read it; run the public tests of the rule, backtest and gate statistics (the Monte Carlo and `m1-oos` tests are not public); `m1-oos` refuses any rules file whose hash differs from the constant in the code, so running it on your own data means writing your own rules file and changing that constant |
-| Frozen rules file | no, only its hash | check a copy against the hash above |
+| Frozen rules file | a redacted copy, [M1_RULES.md](M1_RULES.md): money as % of the starting capital, internal references, private notes, the warm-up source and measured cost detail removed; every rule constant and formula kept | read the exact rule; a redacted copy cannot be checked against the original's hash, so its header lists every changed line by its original line number |
 | Input data (daily candles, ECB reference rates) | no, only its hash | re-fetch with the public fetch commands in the README; the venue may have revised old bars, so your hash can differ |
 | Warm-up data module (bars before the venue's listing) | no | write your own (see the comment at its import) |
 | Account values (`.env`) | names only, in `.env.example` | use your own; the loss and return gates then change |
 | Result file | no, only its hashes | read the pinned report in `docs/reports/m1-oos-report.md` |
 
 So the method can be checked and re-run, but the reported numbers cannot yet be reproduced bit for bit from
-this repository alone. Whether to publish the rules file and the input data is open (data licence terms).
+this repository alone. The rules file is public as a redacted copy; the input data stays private (data licence terms).
 To check that the whole path runs and is deterministic, `reproduce-dev` (see the README) runs the same rule,
 backtest, gates and Monte Carlo on synthetic bars with demo account values and prints a result hash that a
 public test pins.

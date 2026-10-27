@@ -8,8 +8,9 @@ import importlib
 import json
 import logging
 import sqlite3
+from collections.abc import Callable
 from contextlib import closing
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -43,6 +44,14 @@ try:  # Private modules, not in the public repo: create your own `signal_engine/
     ]
 except ImportError:
     importers = []
+hmax_log: ModuleType | None
+hmax_band: ModuleType | None
+try:  # Private modules, not in the public repo: create your own `signal_engine/record/hmax_log.py`
+    # (run, verify, BAND) and `signal_engine/validation/hmax_band.py` (build, write) to enable `hmax`
+    hmax_log = importlib.import_module("signal_engine.record.hmax_log")
+    hmax_band = importlib.import_module("signal_engine.validation.hmax_band")
+except ImportError:
+    hmax_log = hmax_band = None
 SOURCES: dict[str, Any] = {k: v for module in importers for k, v in module.SOURCES.items()}
 # `records sync` order: preregistrations before the gate, the ledger before verification, platforms before the
 # trader tables (an unchanged file is a no-op)
@@ -88,6 +97,17 @@ def add_commands(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> 
     dev = sub.add_parser("reproduce-dev", help="the whole M1 path on synthetic bars, with a result hash")
     dev.add_argument("--seed", type=int, default=7, help="synthetic market seed (default 7)")
     dev.add_argument("--out", required=True, type=Path, help="result JSON path")
+    if hmax_log is not None:
+        hm = sub.add_parser("hmax", help="paper forward run of the frozen HMAX-EW rule (no rule flags)")
+        hm.add_argument(
+            "action",
+            choices=("run", "verify", "band"),
+            help="run = fetch and catch up the log; verify = rebuild every line; band = build the band once",
+        )
+        hm.add_argument("--data-dir", type=Path, default=None, help="data root (default: settings.data_dir)")
+        hm.add_argument(
+            "--now", type=_utc_time, default=None, help="UTC clock override, not after the wall clock"
+        )
     _add_records(sub)
 
 
@@ -260,4 +280,53 @@ def run(args: argparse.Namespace, settings: Settings, log: logging.Logger) -> in
         return 0
     if args.command == "records":
         return _records(args, log)
+    if args.command == "hmax" and hmax_log is not None:
+        return _hmax(args, args.data_dir or settings.data_dir, log)
     return None
+
+
+def _utc_time(text: str) -> datetime:
+    value = datetime.fromisoformat(text)
+    if value.tzinfo is None:
+        raise argparse.ArgumentTypeError("--now needs a UTC offset, e.g. 2026-12-01T00:00:00+00:00")
+    return value.astimezone(UTC)
+
+
+def _wall_clock() -> datetime:
+    return datetime.now(UTC)
+
+
+def _hmax(
+    args: argparse.Namespace, root: Path, log: logging.Logger, clock: Callable[[], datetime] = _wall_clock
+) -> int:
+    """`hmax run|verify|band`: no flag sets a rule parameter; `--now` is never later than the wall clock."""
+    if hmax_log is None:
+        log.error("hmax refused", extra={"reason": "the forward runner module is not installed"})
+        return 2
+    wall = clock()
+    now = args.now or wall
+    if now > wall:
+        log.error("hmax refused", extra={"reason": "--now is later than the wall clock"})
+        return 2
+    try:
+        if args.action == "run":
+            res = hmax_log.run(root, now, clock=clock)
+            log.info(
+                "hmax run",
+                extra={"written": res.written, "gaps": res.gaps, "lines": res.lines, "reason": res.reason},
+            )
+            return 0 if res.reason is None else 2
+        if args.action == "verify":
+            log.info("hmax verify ok", extra={"lines": hmax_log.verify(root, now)})
+            return 0
+        if hmax_band is None:
+            log.error("hmax band refused", extra={"reason": "the band builder module is not installed"})
+            return 2
+        result = hmax_band.build(root)
+        sha = hmax_band.write(result, root / "record" / hmax_log.BAND)
+        print(json.dumps(result.report, sort_keys=True, indent=2))
+        log.info("hmax band written", extra={"sha256": sha})
+        return 0
+    except (ValueError, OSError) as exc:  # edited rules, broken chain, missing data, refused unlock
+        log.error("hmax refused", extra={"action": args.action, "reason": str(exc)})
+        return 2
