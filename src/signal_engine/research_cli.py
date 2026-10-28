@@ -52,6 +52,20 @@ try:  # Private modules, not in the public repo: create your own `signal_engine/
     hmax_band = importlib.import_module("signal_engine.validation.hmax_band")
 except ImportError:
     hmax_log = hmax_band = None
+r2_log: ModuleType | None
+r2_band: ModuleType | None
+try:  # Private modules, not in the public repo: create your own `signal_engine/record/r2_log.py`
+    # (run, verify, BAND) and `signal_engine/validation/r2_band.py` (build, write) to enable `r2`
+    r2_log = importlib.import_module("signal_engine.record.r2_log")
+    r2_band = importlib.import_module("signal_engine.validation.r2_band")
+except ImportError:
+    r2_log = r2_band = None
+private_cli: ModuleType | None
+try:  # Private module, not in the public repo: create your own `signal_engine/private/cli.py` providing
+    # add_commands(sub) and run(args, settings, log) to enable private commands
+    private_cli = importlib.import_module("signal_engine.private.cli")
+except ImportError:
+    private_cli = None
 SOURCES: dict[str, Any] = {k: v for module in importers for k, v in module.SOURCES.items()}
 # `records sync` order: preregistrations before the gate, the ledger before verification, platforms before the
 # trader tables (an unchanged file is a no-op)
@@ -108,6 +122,19 @@ def add_commands(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> 
         hm.add_argument(
             "--now", type=_utc_time, default=None, help="UTC clock override, not after the wall clock"
         )
+    if r2_log is not None:
+        rr = sub.add_parser("r2", help="paper forward run of the R2 rule (no rule flags)")
+        rr.add_argument(
+            "action",
+            choices=("run", "verify", "band"),
+            help="run = fetch and catch up the log; verify = rebuild every line; band = build the band once",
+        )
+        rr.add_argument("--data-dir", type=Path, default=None, help="data root (default: settings.data_dir)")
+        rr.add_argument(
+            "--now", type=_utc_time, default=None, help="UTC clock override, not after the wall clock"
+        )
+    if private_cli is not None:
+        private_cli.add_commands(sub)
     _add_records(sub)
 
 
@@ -282,6 +309,11 @@ def run(args: argparse.Namespace, settings: Settings, log: logging.Logger) -> in
         return _records(args, log)
     if args.command == "hmax" and hmax_log is not None:
         return _hmax(args, args.data_dir or settings.data_dir, log)
+    if args.command == "r2" and r2_log is not None:
+        return _r2(args, args.data_dir or settings.data_dir, log)
+    if private_cli is not None:
+        code: int | None = private_cli.run(args, settings, log)
+        return code
     return None
 
 
@@ -329,4 +361,40 @@ def _hmax(
         return 0
     except (ValueError, OSError) as exc:  # edited rules, broken chain, missing data, refused unlock
         log.error("hmax refused", extra={"action": args.action, "reason": str(exc)})
+        return 2
+
+
+def _r2(
+    args: argparse.Namespace, root: Path, log: logging.Logger, clock: Callable[[], datetime] = _wall_clock
+) -> int:
+    """`r2 run|verify|band`: no flag sets a rule parameter; `--now` is never later than the wall clock."""
+    if r2_log is None:
+        log.error("r2 refused", extra={"reason": "the forward runner module is not installed"})
+        return 2
+    wall = clock()
+    now = args.now or wall
+    if now > wall:
+        log.error("r2 refused", extra={"reason": "--now is later than the wall clock"})
+        return 2
+    try:
+        if args.action == "run":
+            res = r2_log.run(root, now, clock=clock)
+            log.info(
+                "r2 run",
+                extra={"written": res.written, "gaps": res.gaps, "lines": res.lines, "reason": res.reason},
+            )
+            return 0 if res.reason is None else 2
+        if args.action == "verify":
+            log.info("r2 verify ok", extra={"lines": r2_log.verify(root, now)})
+            return 0
+        if r2_band is None:
+            log.error("r2 band refused", extra={"reason": "the band builder module is not installed"})
+            return 2
+        result = r2_band.build(root)
+        sha = r2_band.write(result, root / "record" / r2_log.BAND)
+        print(json.dumps(result.report, sort_keys=True, indent=2))
+        log.info("r2 band written", extra={"sha256": sha})
+        return 0
+    except (ValueError, OSError) as exc:  # edited rules, broken chain, missing data, refused unlock
+        log.error("r2 refused", extra={"action": args.action, "reason": str(exc)})
         return 2

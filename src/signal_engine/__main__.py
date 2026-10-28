@@ -56,15 +56,27 @@ def _positive(value: str) -> int:
 
 
 def _git_head() -> str:
-    """The code version stamped on each prediction line; "unknown" outside a git checkout."""
+    """The code version stamped on each prediction line; "unknown" outside a git checkout.
+
+    "+dirty" is appended when tracked files differ from HEAD: the stamp never claims a commit it did not run.
+    """
+    here = Path(__file__).resolve().parent
     try:
         out = subprocess.run(  # noqa: S603 - fixed read-only git call
             ["git", "rev-parse", "HEAD"],  # noqa: S607
-            capture_output=True, text=True, check=True, cwd=Path(__file__).resolve().parent,
+            capture_output=True, text=True, check=True, cwd=here,
         )
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
-    return out.stdout.strip()
+    head = out.stdout.strip()
+    try:
+        status = subprocess.run(  # noqa: S603 - fixed read-only git call
+            ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=no"],  # noqa: S607
+            capture_output=True, text=True, check=True, cwd=here,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return head + "+dirty"  # cannot prove the tree is clean
+    return head + "+dirty" if status.stdout.strip() else head
 
 
 def _predict(root: Path, now: datetime, log: logging.Logger) -> int:

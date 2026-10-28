@@ -38,6 +38,10 @@
 /src/signal_engine/record/hmax_log.py
 /src/signal_engine/strategy/hmax.py
 /src/signal_engine/validation/hmax_band.py
+/src/signal_engine/strategy/r2.py
+/src/signal_engine/record/r2_log.py
+/src/signal_engine/validation/r2_band.py
+/src/signal_engine/private/
 /tests/test_ops_tools.py
 /tests/test_agent_evals.py
 /tests/test_network_hosts.py
@@ -52,6 +56,10 @@
 /tests/test_hmax_log.py
 /tests/test_hmax.py
 /tests/test_hmax_cli.py
+/tests/test_r2.py
+/tests/test_r2_log.py
+/tests/test_r2_band.py
+/tests/private/
 
 # Build and local files
 __pycache__/

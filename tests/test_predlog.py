@@ -254,4 +254,18 @@ def test_git_head_does_not_depend_on_the_working_directory(
     if not (Path(cli.__file__).resolve().parents[2] / ".git").exists():
         pytest.skip("not a git checkout (exported copy)")
     monkeypatch.chdir(tmp_path)  # a folder outside the repo, as when predict runs from $TMPDIR
-    assert len(cli._git_head()) == 40
+    assert len(cli._git_head().removesuffix("+dirty")) == 40
+
+
+@pytest.mark.parametrize(("status", "want"), [(" M README.md\n", "a" * 40 + "+dirty"), ("", "a" * 40)])
+def test_git_head_marks_a_dirty_tree(status: str, want: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    import signal_engine.__main__ as cli
+
+    def fake_run(argv: list[str], **_k: object) -> subprocess.CompletedProcess[str]:
+        out = "a" * 40 + "\n" if argv[1] == "rev-parse" else status
+        return subprocess.CompletedProcess(argv, 0, out, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert cli._git_head() == want  # a stamp never claims a commit the tree does not match

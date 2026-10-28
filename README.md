@@ -10,8 +10,8 @@ fetchers and recorders, storage and a paper simulator. The first frozen strategy
 pre-registered out-of-sample test after realistic execution costs, so it was not deployed; the result is
 published in [RESULTS.md](RESULTS.md), and the code that produced it is here too: the frozen strategy rule,
 the backtest loop, the validation statistics, the point-in-time loader and the append-only records store. Data,
-the frozen rules file, research notes, internal decision records and the owner's own account values (kept in
-`.env`) stay private.
+the original frozen rules file, research notes, internal decision records and the owner's own account values (kept
+in `.env`) stay private; a redacted copy of the rules file is public as [M1_RULES.md](M1_RULES.md).
 
 **Author:** Tabassom Entezami
 

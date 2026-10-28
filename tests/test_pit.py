@@ -5,6 +5,7 @@ from pathlib import Path
 import pyarrow as pa
 import pytest
 
+from signal_engine.data import pit
 from signal_engine.data.bitvavo import SCHEMA
 from signal_engine.data.pit import (
     DAY_MS,
@@ -52,13 +53,15 @@ def _bars(days: list[str], first_lag_ms: int | None = 5 * MINUTE) -> pa.Table:
 
 
 @pytest.fixture
-def store(tmp_path: Path) -> Path:
+def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Synthetic BTC-EUR and USDC-EUR partitions around the OOS start (no real prices)."""
     days = ["2019-08-15", "2019-08-16", "2019-08-17", "2019-08-18"]
     for symbol in ("BTC-EUR", "USDC-EUR"):
         write_partition(_bars(days), tmp_path, "bitvavo", symbol, datetime(2019, 8, 1, tzinfo=UTC))
     (tmp_path / "prereg.sha256").write_text(f"{HASH}  prereg.md\n")
     (tmp_path / "prereg.md").write_bytes(PREREG_TEXT)
+    for purpose in (pit.PURPOSE, pit.PREDLOG_PURPOSE):  # the temp record stands in for the pinned file
+        monkeypatch.setitem(pit.PINNED, purpose, (tmp_path / "prereg.sha256",))
     return tmp_path
 
 
@@ -153,6 +156,20 @@ def test_closed_and_assert_grid() -> None:
         assert_grid(table, offset_ms=3_600_000)
 
 
+def test_as_of_on_an_empty_table_keeps_the_schema_and_returns_no_rows(store: Path) -> None:
+    # Empty tables the code meets: built with the full schema, and a load() range with no stored bar.
+    built = _bars([])
+    start, end = datetime(2019, 8, 1, tzinfo=UTC), datetime(2019, 8, 2, tzinfo=UTC)
+    loaded = load(store, "bitvavo", "USDC-EUR", start=start, end=end, sha256_file=store / "prereg.sha256")
+    t = datetime(2030, 1, 1, tzinfo=UTC)
+    for empty in (built, loaded):
+        assert empty.num_rows == 0
+        for column in (None, "close_time", "first_available_time"):
+            out = as_of(empty, t, column=column)
+            assert out.num_rows == 0
+            assert out.schema == empty.schema
+
+
 def test_an_edited_rules_text_keeps_the_lock_closed(store: Path) -> None:
     sha = store / "prereg.sha256"
     (store / "prereg.md").write_bytes(PREREG_TEXT + b"edited after the freeze\n")
@@ -217,12 +234,13 @@ FWD_DAYS = ["2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28"]
 
 
 @pytest.fixture
-def fwd(tmp_path: Path) -> Path:
+def fwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Synthetic altcoin, BTC and USDC bars around the hash day, plus a rules file hashed at HASHED_UTC."""
     for symbol in ("SOL-EUR", "BTC-EUR", "USDC-EUR"):
         write_partition(_bars(FWD_DAYS), tmp_path, "bitvavo", symbol, datetime(2026, 10, 1, tzinfo=UTC))
     (tmp_path / "fwd.sha256").write_text(f"{HASH}  fwd.md\n# hashed_utc {HASHED_UTC} (test)\n")
     (tmp_path / "fwd.md").write_bytes(PREREG_TEXT)
+    monkeypatch.setitem(pit.PINNED, pit.FORWARD_PURPOSE, (tmp_path / "fwd.sha256",))
     return tmp_path
 
 
@@ -310,4 +328,289 @@ def test_existing_purposes_unchanged(fwd: Path, store: Path) -> None:
             prereg_hash=HASH,
             purpose="predlog",
             sha256_file=fwd / "fwd.sha256",
+        )
+
+
+# Lookback purpose: the closes before a frozen rule's first forward day (Security conditions C1-C6).
+LB_HASHED = "2026-11-29T10:00:00Z"
+LB_FIRST = datetime(2026, 11, 30, tzinfo=UTC)
+LB_START = LB_FIRST - timedelta(days=200)
+
+
+def _pair(root: Path, name: str, hashed: str | None = LB_HASHED) -> Path:
+    sha = root / f"{name}.sha256"
+    sha.write_text(f"{HASH}  {name}.md\n" + (f"# hashed_utc {hashed} (test)\n" if hashed else ""))
+    sha.with_suffix(".md").write_bytes(PREREG_TEXT)
+    return sha
+
+
+@pytest.fixture
+def lb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """BTC-USDC bars at both window edges, a rules pair pinned to "lookback", the lock clock at the start."""
+    write_partition(
+        _bars(["2026-05-13", "2026-05-14", "2026-05-15"]),
+        tmp_path,
+        "bitvavo",
+        "BTC-USDC",
+        datetime(2026, 5, 1, tzinfo=UTC),
+    )
+    write_partition(
+        _bars(["2026-11-29", "2026-11-30"]),
+        tmp_path,
+        "bitvavo",
+        "BTC-USDC",
+        datetime(2026, 11, 1, tzinfo=UTC),
+    )
+    monkeypatch.setitem(pit.PINNED, pit.LOOKBACK_PURPOSE, (_pair(tmp_path, "r2"),))
+    monkeypatch.setattr(pit, "_now", lambda: LB_FIRST)
+    return tmp_path
+
+
+def _lb(
+    sha: Path,
+    symbol: str = "BTC-USDC",
+    source: str = "bitvavo",
+    start: datetime | None = LB_START,
+    end: datetime | None = LB_FIRST,
+) -> bool:
+    return is_unlocked(HASH, pit.LOOKBACK_PURPOSE, sha, symbol, start=start, end=end, source=source)
+
+
+def test_lookback_columns_exact_set(lb: Path) -> None:
+    table = load(
+        lb,
+        "bitvavo",
+        "BTC-USDC",
+        start=LB_START,
+        end=LB_FIRST,
+        prereg_hash=HASH,
+        purpose=pit.LOOKBACK_PURPOSE,
+        sha256_file=lb / "r2.sha256",
+    )
+    assert table.column_names == ["ts", "close"]  # projected in SQL: no open/high/low/volume, no P&L
+    assert table.column("ts").to_pylist() == [_ms("2026-05-14"), _ms("2026-05-15"), _ms("2026-11-29")]
+
+
+def test_lookback_201st_close_refused(lb: Path) -> None:
+    assert _lb(lb / "r2.sha256")
+    assert not _lb(
+        lb / "r2.sha256", start=LB_START - timedelta(days=1)
+    )  # a mutation 200 -> 201 goes red here
+    with pytest.raises(LoaderLockError, match="lookback"):
+        load(
+            lb,
+            "bitvavo",
+            "BTC-USDC",
+            start=LB_START - timedelta(days=1),
+            end=LB_FIRST,
+            prereg_hash=HASH,
+            purpose=pit.LOOKBACK_PURPOSE,
+            sha256_file=lb / "r2.sha256",
+        )
+
+
+def test_lookback_refuses_open_or_late_end(lb: Path) -> None:
+    assert not _lb(lb / "r2.sha256", end=None)
+    assert not _lb(lb / "r2.sha256", end=LB_FIRST + timedelta(milliseconds=1))
+
+
+def test_lookback_refuses_start_none(lb: Path) -> None:
+    assert not _lb(lb / "r2.sha256", start=None)
+    with pytest.raises(LoaderLockError):
+        load(
+            lb,
+            "bitvavo",
+            "BTC-USDC",
+            end=LB_FIRST,
+            prereg_hash=HASH,
+            purpose=pit.LOOKBACK_PURPOSE,
+            sha256_file=lb / "r2.sha256",
+        )
+
+
+def test_lookback_refuses_other_rules_files(lb: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    m1, hmax = _pair(lb, "m1"), _pair(lb, "hmax")
+    monkeypatch.setitem(pit.PINNED, pit.PURPOSE, (m1,))
+    monkeypatch.setitem(pit.PINNED, pit.FORWARD_PURPOSE, (hmax,))
+    assert not _lb(m1) and not _lb(hmax)  # valid pairs pinned to other purposes never open "lookback"
+
+
+def test_lookback_refuses_copied_rules_pair(lb: Path) -> None:
+    assert not _lb(_pair(lb, "r2-copy"))  # same text, same digest, same hash time: not the pinned path
+
+
+def test_lookback_refuses_other_symbol_or_source(lb: Path) -> None:
+    sha = lb / "r2.sha256"
+    assert _lb(sha, "ETH-USDC")
+    for symbol, source in (
+        ("BTC-EUR", "bitvavo"),
+        ("SOL-USDC", "bitvavo"),
+        ("BTC/USDC", "bitvavo"),
+        ("BTC-USDC", "binance_vision"),
+        ("BTCUSDT", "bitvavo"),
+    ):
+        assert not _lb(sha, symbol, source)
+
+
+def test_lookback_refuses_before_forward_start_wallclock(lb: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pit, "_now", lambda: LB_FIRST - timedelta(seconds=1))
+    assert not _lb(lb / "r2.sha256")
+
+
+def test_lookback_no_hashed_utc_line_refused(lb: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sha = _pair(lb, "r2-nohash", hashed=None)
+    monkeypatch.setitem(pit.PINNED, pit.LOOKBACK_PURPOSE, (sha,))
+    assert not _lb(sha)
+
+
+def test_lookback_naive_datetime_raises(lb: Path) -> None:
+    with pytest.raises(ValueError, match="timezone-aware"):
+        _lb(lb / "r2.sha256", start=LB_START.replace(tzinfo=None))
+
+
+# Pins: each purpose opens only with its own rules file(s).
+def test_pinned_map_is_constant_and_exact() -> None:
+    reports = Path(pit.__file__).resolve().parents[3] / "docs" / "reports"
+    names = {k: tuple(p.name for p in v) for k, v in pit.PINNED.items()}
+    assert names == {
+        "m1-oos": ("m1-preregistration.sha256",),
+        "predlog": ("predlog-preregistration.sha256",),
+        "forward": ("hmax-preregistration.sha256", "r2-preregistration.sha256"),
+        "lookback": ("r2-preregistration.sha256",),
+        "venue-premium": ("venue-premium-preregistration.sha256",),
+    }
+    assert {p.parent for v in pit.PINNED.values() for p in v} == {reports}
+    assert set(pit.PINNED) == set(pit.SCOPE)
+
+
+def test_refuses_copied_pair_each_purpose(store: Path) -> None:
+    copy = _pair(store, "copy", hashed="2019-01-01T00:00:00Z")
+    start, end = datetime(2019, 8, 20, tzinfo=UTC), datetime(2019, 8, 21, tzinfo=UTC)
+    assert is_unlocked(HASH, "m1-oos", store / "prereg.sha256", "BTC-EUR")
+    for purpose in pit.SCOPE:
+        assert not is_unlocked(HASH, purpose, copy, "BTC-EUR", start=start, end=end, source="bitvavo")
+
+
+def test_refuses_cross_purpose_file(store: Path, fwd: Path) -> None:
+    start = datetime(2026, 10, 27, tzinfo=UTC)
+    assert is_unlocked(HASH, "forward", fwd / "fwd.sha256", "BTC-EUR", start=start)
+    assert not is_unlocked(HASH, "m1-oos", fwd / "fwd.sha256", "BTC-EUR")
+    assert not is_unlocked(HASH, "forward", store / "prereg.sha256", "BTC-EUR", start=start)
+
+
+def test_real_hmax_and_predlog_files_unlock() -> None:
+    for purpose, sha in (
+        ("predlog", pit.PREDLOG_SHA256_FILE),
+        ("m1-oos", pit.PREREG_SHA256_FILE),
+        ("forward", pit.HMAX_SHA256_FILE),
+    ):
+        if not sha.exists():
+            pytest.skip(f"{sha.name} is not in this copy")
+        assert is_unlocked(read_prereg_hash(sha), purpose, sha, "BTC-EUR", start=forward_start(sha))
+
+
+# Venue-premium purpose: closes of the pairs listed in a frozen report spec (Security conditions V1-V6).
+SPEC = b"spec\nfirst_day: 2018-01-01\npairs: bitvavo:BTC-EUR venue/candles:BTCUSDT venue/candles:USDTIRT\n"
+V_NOW = datetime(2026, 10, 28, 8, tzinfo=UTC)
+V_START, V_END = datetime(2018, 1, 1, tzinfo=UTC), datetime(2026, 10, 28, tzinfo=UTC)
+
+
+@pytest.fixture
+def venue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    digest = hashlib.sha256(SPEC).hexdigest()
+    (tmp_path / "spec.md").write_bytes(SPEC)
+    (tmp_path / "spec.sha256").write_text(f"{digest}  spec.md\n# hashed_utc 2026-10-28T00:00:00Z (test)\n")
+    rows = [
+        {
+            "ts": _ms("2026-10-26") - 12_600_000,
+            "open": 1.0,
+            "high": 2.0,
+            "low": 0.5,
+            "close": 1.5,
+            "volume": 3.0,
+            "known_at": 0,
+        }
+    ]
+    (tmp_path / "raw" / "venue" / "candles").mkdir(parents=True)
+    import pyarrow.parquet as pq
+
+    pq.write_table(pa.Table.from_pylist(rows), tmp_path / "raw" / "venue" / "candles" / "BTCUSDT.parquet")
+    monkeypatch.setitem(pit.PINNED, pit.VENUE_PURPOSE, (tmp_path / "spec.sha256",))
+    monkeypatch.setattr(pit, "_now", lambda: V_NOW)
+    return tmp_path
+
+
+def _v(
+    root: Path,
+    symbol: str,
+    source: str,
+    start: datetime | None = V_START,
+    end: datetime | None = V_END,
+    sha: str = "spec.sha256",
+) -> bool:
+    return is_unlocked(
+        read_prereg_hash(root / sha),
+        pit.VENUE_PURPOSE,
+        root / sha,
+        symbol,
+        start=start,
+        end=end,
+        source=source,
+    )
+
+
+def test_venue_columns_exact(venue: Path) -> None:
+    table = load(
+        venue,
+        "venue/candles",
+        "BTCUSDT",
+        start=V_START,
+        end=V_END,
+        prereg_hash=read_prereg_hash(venue / "spec.sha256"),
+        purpose=pit.VENUE_PURPOSE,
+        sha256_file=venue / "spec.sha256",
+    )
+    assert table.column_names == ["ts", "close"] and table.num_rows == 1
+
+
+def test_venue_refuses_btc_usdc_and_usdtirt(venue: Path) -> None:
+    assert _v(venue, "BTCUSDT", "venue/candles") and _v(venue, "BTC-EUR", "bitvavo")
+    assert not _v(venue, "USDTIRT", "venue/candles")  # listed in the spec, still refused: not BTC/ETH
+    assert not _v(venue, "BTC-USDC", "bitvavo")  # same base asset, not a listed pair
+    assert not _v(venue, "BTCUSDT", "bitvavo")
+
+
+def test_venue_refuses_open_or_future_end(venue: Path) -> None:
+    assert not _v(venue, "BTCUSDT", "venue/candles", end=None)
+    assert not _v(venue, "BTCUSDT", "venue/candles", start=None)
+    assert not _v(venue, "BTCUSDT", "venue/candles", end=V_END + timedelta(milliseconds=1))
+    assert not _v(venue, "BTCUSDT", "venue/candles", start=V_START - timedelta(milliseconds=1))
+
+
+def test_venue_edited_spec_refused(venue: Path) -> None:
+    (venue / "spec.md").write_bytes(SPEC + b"pairs: bitvavo:BTC-USDC\n")
+    assert not _v(venue, "BTCUSDT", "venue/candles")
+    with pytest.raises(LoaderLockError, match="venue-premium"):
+        load(
+            venue,
+            "venue/candles",
+            "BTCUSDT",
+            start=V_START,
+            end=V_END,
+            prereg_hash=read_prereg_hash(venue / "spec.sha256"),
+            purpose=pit.VENUE_PURPOSE,
+            sha256_file=venue / "spec.sha256",
+        )
+
+
+def test_venue_spec_never_opens_other_purposes(venue: Path) -> None:
+    for purpose in ("m1-oos", "predlog", "forward", "lookback"):
+        assert not is_unlocked(
+            read_prereg_hash(venue / "spec.sha256"),
+            purpose,
+            venue / "spec.sha256",
+            "BTC-EUR",
+            start=V_START,
+            end=V_END,
+            source="bitvavo",
         )

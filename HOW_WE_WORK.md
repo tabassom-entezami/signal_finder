@@ -8,6 +8,11 @@ What was removed: role numbers, run ids, decision ids, file names, paths and dat
 title. The discussion is shortened; the claims, the replies and the checker's findings are as they were written.
 Research results, strategy, limits and money stay private.
 
+What this page is not: proof that the method works. It shows the controls and one real record of them in use.
+A checklist, a checker or a register existing does not show that the system is reliable, that the controls cover
+every important failure, or that the signals make money; the signal results are in [RESULTS.md](RESULTS.md).
+Where something below is a rule or an aim rather than a measured result, it says so.
+
 ## 1. A real discussion: should some agents merge into one?
 
 **The question (founder):** "Is it better to mix some agents together into one agent? e.g. CTO can also be senior
@@ -98,17 +103,51 @@ called a routing trigger was an agent name.
 - The founder's own example got a direct "no" with the reason, not a softened answer.
 - The decision says what evidence would reverse it.
 
+**What is measured and what is not.**
+The file counts in the rounds (34, 35, 36) were the authors' estimates. The rest was measured after the build:
+
+- **Agent set.** The old set was rebuilt from history: 50 files. The live set is 33. A test now runs the
+  generator on a copy of the role files and fails if a stale agent file survives, if the routing hook names an
+  agent without a file, or if the live set differs from the generated one. We broke it on purpose both ways to
+  see it fail.
+- **Token cost.** The agent list sent with every main-session request shrank from about 4,000 to about 2,700
+  tokens (an estimate from its length). Against a typical request of about 300,000 input tokens, that saves under
+  one token in two hundred. The token argument for the merge was real but small.
+- **Outcomes before and after.** First-time acceptance went from 24 of 41 agent runs before the merge to 702 of
+  799 after; for the same agents, 19 of 30 to 149 of 171. This is not evidence for the merge: on the same day the
+  work moved from long research reports to short, capped opinion and checker runs, and the prompts were
+  revised, so the rise cannot be credited to fewer agents.
+- **Routing errors.** After the merge, no run went to a removed agent; three runs were sent to the wrong role
+  and re-run. Before the merge such errors were not logged, so there is no comparison.
+- **Defects caught by checkers.** Logged since the field was added: 139 defects on 75 checker runs. There is no
+  before value.
+- **Not measured.** The same tasks replayed with 50 and with 33 agents. With the token side known to be small,
+  it is worth running only if the question reopens. The merge stays a judgement on overlap and routing, not a
+  measured win.
+
 ## 2. Findings, gaps and priorities
 
 - **One findings log.** Anything found during work (a bug, a wrong number, a broken assumption, a blocker) gets a
-  row at once: what was found, the evidence, the owner, the plan and the status. Fixed rows are removed, so the log
-  holds only what is still open.
+  row at once: what was found, the evidence, the owner, the plan and the status. Open rows stay at the top; a
+  solved row moves to a Closed section at the end with its final status and is never deleted. Rows from the
+  earlier rule, which deleted solved rows, were recovered from the saved file history into that section; rows
+  added and removed between two saves left no record.
 - **One task board, ranked.** Every open task has a priority and one owner role. P1 is work on the results and the
   forward record, P2 protects those results, P3 is the rest. Items only the founder can do (git, approvals,
   settings) have the founder as owner. A finding gets a priority when it moves onto the board.
-- **Gaps are searched for, not waited for.** Each round the team looks for what is missing, so the founder should
-  never have to add an item. Every plan passes a fixed gap checklist (time, money, security, blast radius,
-  production safety, operations, simplicity) before it is reviewed.
+- **Gaps are searched for, not waited for.** Each round the team looks for what is missing. The aim is that the
+  founder never has to add an item; when the founder does, that counts as a miss. Every plan is run through a
+  fixed gap checklist (time, money, security, blast radius, production safety, operations, simplicity) before it
+  is reviewed. The checklist catches gaps of the kinds it names; it does not prove that no gap was missed.
+- **Logs feed one records store, and it refuses rather than guesses.** The findings, decisions, agent runs, gaps
+  and pre-registrations stay plain files; a sync copies them into a database and refuses any row it cannot read
+  cleanly: a table row whose cells do not line up, a personal handle or wallet in the text, or a
+  pre-registration whose frozen hash is missing. Every run counts the refused rows, and each one is traced to a
+  cause. Some refusals are mistakes in the file and get fixed. Others are the guard working as meant, such as a
+  person's handle kept out or a draft not yet frozen, and those stay refused.
+- **Every agent run is logged and closed.** Each run gets a row when it starts and is closed with its tool calls,
+  verdict and, for a checker, how many errors it caught. A run still open well after its work landed fails the
+  after-round check until the manager closes it.
 - **Promised versus built.** A check compares what the project says exists with what is on disk and working, and
   fails when a component is marked working but its data is stale.
 - **Every report ends the same way:** *Blocked on me* (only what needs the founder), *Changed*, *Found*.
@@ -132,12 +171,19 @@ Ranking: risks that could end the project or harm the founder come first and are
 ranked by expected loss. Every row has a review date and an early warning that brings the review forward. Risks no
 area owner saw get their own section, and the register is refreshed after major results. The values stay private.
 
+An example row, made up to show the shape (the real rows and values are private):
+
+| Risk | Stage | Likelihood | Impact | Automated check | Owner | Residual |
+|---|---|---|---|---|---|---|
+| A trading key leaks and is used to move money | Live trading | Low, assumed range (no measured rate) | Ruin | Keys have no withdrawal right; a check fails if a key file is readable by agents | Security Engineer | Trades can still be placed until the key is revoked |
+
 ## 4. How we make sure about data
 
 In short (details in [ARCHITECTURE.md](ARCHITECTURE.md) section 3):
 - Every dataset has a row in a registry with its licence, whether it is point-in-time safe, its owner and its
   refresh cadence. A dataset without a row is not used, and one that is not point-in-time safe never enters a
   backtest.
-- Every number in a report is recomputed from the raw data by a checker who did not produce it, with a different
-  method.
+- The rule is that every number in a report is recomputed from the raw data by a checker who did not produce
+  it, with a different method. This catches arithmetic, query and copying errors. It does not catch errors the
+  author and checker share: the same wrong source data, the same wrong definition, or the same assumption.
 - Held-out test data opens only through a loader that first verifies the hash of the frozen rules file.

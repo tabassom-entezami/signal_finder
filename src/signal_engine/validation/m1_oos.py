@@ -87,6 +87,12 @@ class RealBarSource:
         sha256_file: Path = pit.PREREG_SHA256_FILE,
         known_at: datetime | None = None,
     ) -> None:
+        # Only the two rules that read this full bar set: any other purpose (e.g. a closes-only report
+        # spec) would open the M1 hold-out bars through this class.
+        if purpose not in (pit.PURPOSE, pit.PREDLOG_PURPOSE):
+            raise ValueError(
+                f"RealBarSource reads only for {pit.PURPOSE!r} or {pit.PREDLOG_PURPOSE!r}, got {purpose!r}"
+            )
         self.data_dir = data_dir
         self.prereg_hash = prereg_hash  # given by m1-oos or predict only; None keeps the loader lock closed
         self.now = now  # the clock for dropping unfinished bars; None = the wall clock

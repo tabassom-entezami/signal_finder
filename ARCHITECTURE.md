@@ -46,7 +46,7 @@
 - the append-only records store (SQLite, migrations, triggers, views) and its core `records` commands;
 - tests for all of the above.
 
-**Private (by role):** the frozen rules file, the reserved-coin rule, the warm-up data source, the records importers and their key, the research database, the prediction record and scorecard, and operations scripts. A public module that needs one of them says so in a comment at its import and asks you to create your own; the command-line tool registers a command only when its modules are present, so this repository runs on its own. The owner's own values (stake, loss limit, savings rate, operational events, default owners) are read from `.env` (see `.env.example`); nothing personal is in the code.
+**Private (by role):** the original frozen rules file (a redacted copy is public as `M1_RULES.md`), the reserved-coin rule, the warm-up data source, the records importers and their key, the research database, the prediction record and scorecard, and operations scripts. A public module that needs one of them says so in a comment at its import and asks you to create your own; the command-line tool registers a command only when its modules are present, so this repository runs on its own. The owner's own values (stake, loss limit, savings rate, operational events, default owners) are read from `.env` (see `.env.example`); nothing personal is in the code.
 
 ## 3. Data layout and point-in-time rules
 
