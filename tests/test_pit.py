@@ -510,7 +510,7 @@ def test_real_hmax_and_predlog_files_unlock() -> None:
 
 
 # Venue-premium purpose: closes of the pairs listed in a frozen report spec (Security conditions V1-V6).
-SPEC = b"spec\nfirst_day: 2018-01-01\npairs: bitvavo:BTC-EUR venue/candles:BTCUSDT venue/candles:USDTIRT\n"
+SPEC = b"spec\nfirst_day: 2018-01-01\npairs: bitvavo:BTC-EUR venue/candles:BTCUSDT venue/candles:SOLUSDT\n"
 V_NOW = datetime(2026, 10, 28, 8, tzinfo=UTC)
 V_START, V_END = datetime(2018, 1, 1, tzinfo=UTC), datetime(2026, 10, 28, tzinfo=UTC)
 
@@ -575,7 +575,7 @@ def test_venue_columns_exact(venue: Path) -> None:
 
 def test_venue_refuses_btc_usdc_and_usdtirt(venue: Path) -> None:
     assert _v(venue, "BTCUSDT", "venue/candles") and _v(venue, "BTC-EUR", "bitvavo")
-    assert not _v(venue, "USDTIRT", "venue/candles")  # listed in the spec, still refused: not BTC/ETH
+    assert not _v(venue, "SOLUSDT", "venue/candles")  # listed in the spec, still refused: not BTC/ETH
     assert not _v(venue, "BTC-USDC", "bitvavo")  # same base asset, not a listed pair
     assert not _v(venue, "BTCUSDT", "bitvavo")
 

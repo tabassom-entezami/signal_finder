@@ -20,6 +20,10 @@ dev = [
     "hypothesis>=6.170.0",
 ]
 
+[tool.uv]
+# Resolve only package versions published at least 7 days ago (supply-chain cool-down).
+exclude-newer = "7 days"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
