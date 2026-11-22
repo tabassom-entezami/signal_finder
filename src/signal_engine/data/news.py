@@ -46,6 +46,7 @@ from signal_engine.data import http
 from signal_engine.storage import append_new
 
 SOURCE = "news"
+STAMP_DIR = "news-stamp"  # <data>/ops/news-stamp/<source>.json, rewritten after each successful fetch
 REQUEST_GAP_S = 1.0  # polite spacing between requests
 GDELT_STEP = timedelta(minutes=15)
 GDELT_MAX_FILES = 96  # one day of 15-minute batches per run at most
@@ -322,6 +323,17 @@ def _record_gdelt(
     return counts
 
 
+def stamp_path(root: Path, source: str) -> Path:
+    return root / "ops" / STAMP_DIR / f"{source}.json"
+
+
+def _stamp(root: Path, source: str, ok: datetime, counts: dict[str, int]) -> None:
+    """Success stamp per source: a quiet day (0 new rows) writes no data file, but the run is still proven."""
+    path = stamp_path(root, source)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"ok_utc": ok.isoformat(), **counts}, sort_keys=True) + "\n")
+
+
 def record_news(
     root: Path,
     sources: Sequence[str] = SOURCES,
@@ -342,21 +354,23 @@ def record_news(
     for source in sources:
         try:
             if source == "gdelt":
-                result[source] = dict(_record_gdelt(root, get, clock, sleep, gdelt_max_files))
-                continue
-            sleep(REQUEST_GAP_S)
-            observed = _ms(clock())
-            if source in FEEDS:
-                url, language, event_type = FEEDS[source]
-                rows = parse_rss(get(url), source, language, event_type, observed)
-            elif source == "defillama_hacks":
-                rows = parse_hacks(get("https://api.llama.fi/hacks"), observed)
+                counts = dict(_record_gdelt(root, get, clock, sleep, gdelt_max_files))
             else:
-                rows = parse_snapshot(get(snapshot_url()), observed)
-            if not rows:
-                raise ValueError("0 items fetched")
-            new = append_new(_table(rows), root, f"{SOURCE}/{source}", "id", clock())
-            result[source] = {"fetched": len(rows), "new": new}
+                sleep(REQUEST_GAP_S)
+                observed = _ms(clock())
+                if source in FEEDS:
+                    url, language, event_type = FEEDS[source]
+                    rows = parse_rss(get(url), source, language, event_type, observed)
+                elif source == "defillama_hacks":
+                    rows = parse_hacks(get("https://api.llama.fi/hacks"), observed)
+                else:
+                    rows = parse_snapshot(get(snapshot_url()), observed)
+                if not rows:
+                    raise ValueError("0 items fetched")
+                new = append_new(_table(rows), root, f"{SOURCE}/{source}", "id", clock())
+                counts = {"fetched": len(rows), "new": new}
+            result[source] = dict(counts)
+            _stamp(root, source, clock(), counts)
         except Exception as exc:  # one dead feed must not lose the others
             result[source] = {"error": repr(exc)}
             log.error("record-news source failed", extra={"source": source, "error": repr(exc)})

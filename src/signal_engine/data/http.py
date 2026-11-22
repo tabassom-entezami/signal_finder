@@ -2,6 +2,7 @@
 
 import csv
 import logging
+import os
 import re
 import time
 import urllib.error
@@ -12,6 +13,10 @@ from pathlib import Path
 from typing import Protocol
 
 HOSTS_FILE = Path(__file__).resolve().parents[3] / "ops/network/hosts.csv"  # one list for sandbox and jobs
+# A missing or broken host list refuses every request. Users without the file opt out with this
+# exact process-environment value (never read from .env); it is ignored when the file is present.
+OPT_OUT_ENV = "SIGNAL_ENGINE_HOST_LIST"
+OPT_OUT_VALUE = "none"
 
 TIMEOUT_S = 30.0
 MAX_RETRIES = 3  # retries after the first attempt, on network errors and HTTP 5xx only
@@ -20,31 +25,63 @@ USER_AGENT = "signal-engine/0.1 (research; public data)"
 
 log = logging.getLogger(__name__)
 _sleep = time.sleep  # patched in tests
+_opt_out_warned = False  # the opt-out warning is logged once per process
 
 
 class HttpGet(Protocol):
     def __call__(self, url: str) -> bytes: ...
 
 
+def _refuse(reason: str) -> PermissionError:
+    return PermissionError(
+        f"host list {HOSTS_FILE} {reason}; every fetch refused "
+        f"(without a host list file, set {OPT_OUT_ENV}={OPT_OUT_VALUE} in the process environment)"
+    )
+
+
 @cache
 def _hosts(kind: str) -> frozenset[str]:
-    if not HOSTS_FILE.exists():
+    """Rows of `kind`; a missing or broken list raises PermissionError (errors are not cached)."""
+    try:
+        with HOSTS_FILE.open(encoding="utf-8", newline="") as fh:
+            reader = csv.DictReader(fh)
+            rows = list(reader)
+            columns = set(reader.fieldnames or ())
+    except FileNotFoundError as exc:
+        raise _refuse("is missing") from exc
+    except (OSError, UnicodeDecodeError, csv.Error) as exc:
+        raise _refuse(f"is unreadable ({type(exc).__name__})") from exc
+    if not {"host", "list"} <= columns:
+        raise _refuse("lacks the `host` and `list` columns")
+    if not any((r.get("host") or "").strip() for r in rows):
+        raise _refuse("has no host rows")
+    return frozenset((r.get("host") or "").lower().rstrip(".") for r in rows if r.get("list") == kind)
+
+
+def _listed(kind: str) -> frozenset[str]:
+    # the opt-out is read at call time from the process environment and only covers a MISSING file
+    missing = not HOSTS_FILE.exists() and not HOSTS_FILE.is_symlink()
+    if os.environ.get(OPT_OUT_ENV) == OPT_OUT_VALUE and missing:
+        global _opt_out_warned
+        if not _opt_out_warned:
+            log.warning("no host list file and %s=%s: requests are not checked against a host list",
+                        OPT_OUT_ENV, OPT_OUT_VALUE)
+            _opt_out_warned = True
         return frozenset()
-    with HOSTS_FILE.open(encoding="utf-8") as fh:
-        return frozenset(r["host"].lower().rstrip(".") for r in csv.DictReader(fh) if r.get("list") == kind)
+    return _hosts(kind)
 
 
 def denied_hosts() -> frozenset[str]:
     """Hosts the host registry stops (`list=deny` in ops/network/hosts.csv)."""
-    return _hosts("deny")
+    return _listed("deny")
 
 
 def research_hosts() -> frozenset[str]:
     """Hosts open for reading public data only (`list=research`): no account, order or login paths."""
-    return _hosts("research")
+    return _listed("research")
 
 
-# account and money paths stay closed on research hosts (opinions/bitpin-research-access-2026-10-26.md)
+# account and money paths stay closed on research hosts
 RESEARCH_PATH_BLOCK = re.compile(
     r"order(?!book)|account|withdraw|deposit|wallet|user|auth|login|transfer", re.IGNORECASE
 )

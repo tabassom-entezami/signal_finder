@@ -203,6 +203,9 @@ def test_record_news_stores_every_source_with_its_known_at_rule(tmp_path: Path) 
     assert early["known_at"] == early["observed_at"] < early["published_at"]  # listed before its batch time
     assert "John" not in json.dumps(gdelt) and json.loads(gdelt[0]["extra"])["tone"] == -1.5
     assert (tmp_path / "raw/news/gdelt/.last_batch").read_text() == LATEST.isoformat()
+    for source in ("coinbase_status", "defillama_hacks", "gdelt"):  # one stamp per source, own counts
+        stamp = json.loads(news.stamp_path(tmp_path, source).read_text())
+        assert {k: v for k, v in stamp.items() if k != "ok_utc"} == result[source], source
 
 
 def all_feeds_ok() -> FakeGet:
@@ -238,6 +241,28 @@ def test_a_failing_or_empty_feed_is_an_error_but_the_others_are_stored(tmp_path:
     assert "503" in str(result["sec"]["error"])
     assert "0 items" in str(result["kraken_status"]["error"])
     assert result["coinbase_status"]["new"] == 2 and rows(tmp_path, "news/coinbase_status")
+
+
+def test_a_quiet_day_with_no_new_rows_still_stamps_the_successful_run(tmp_path: Path) -> None:
+    run_news(tmp_path, all_feeds_ok(), sources=("snapshot",))
+    later = T0 + timedelta(days=4)
+    result = run_news(tmp_path, all_feeds_ok(), now=later, sources=("snapshot",))
+    assert result["snapshot"] == {"fetched": 1, "new": 0}
+    assert len(list((tmp_path / "raw/news/snapshot").glob("*.parquet"))) == 1  # no new data file
+    stamp = json.loads(news.stamp_path(tmp_path, "snapshot").read_text())
+    assert stamp == {"ok_utc": later.isoformat(), "fetched": 1, "new": 0}
+
+
+def test_a_failed_fetch_leaves_the_stamp_of_the_last_successful_run(tmp_path: Path) -> None:
+    bad = all_feeds_ok()
+    bad.answers[news.snapshot_url()] = urllib.error.URLError("timed out")
+    run_news(tmp_path, bad, sources=("snapshot",))
+    assert not news.stamp_path(tmp_path, "snapshot").exists()
+    run_news(tmp_path, all_feeds_ok(), sources=("snapshot",))
+    bad.answers[news.snapshot_url()] = b'{"data": {"proposals": []}}'  # 0 items is a failure too
+    result = run_news(tmp_path, bad, now=T0 + timedelta(days=1), sources=("snapshot",))
+    assert "0 items" in str(result["snapshot"]["error"])
+    assert json.loads(news.stamp_path(tmp_path, "snapshot").read_text())["ok_utc"] == T0.isoformat()
 
 
 def test_gdelt_catches_up_missed_batches_skips_404_and_respects_the_cap(tmp_path: Path) -> None:

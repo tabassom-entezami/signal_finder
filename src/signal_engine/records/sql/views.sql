@@ -104,6 +104,8 @@ FROM decide_forecasts_current AS f
 JOIN decide_forecast_resolutions_current AS r ON r.forecast_id = f.id
 LEFT JOIN ops_agent_runs AS a ON a.id = f.agent_run_id
 WHERE lower(trim(f.source)) <> 'backfill' -- a backfilled p is ex-post by construction: kept, never calibrated
+  -- a p written once its outcome window had opened (or with no window start, older lines) is ex-post too
+  AND f.outcome_from_utc IS NOT NULL AND f.created_utc < f.outcome_from_utc
   -- an unscorable line's outcome is a fixed placeholder 0; IS NOT keeps lines without a class (NULL)
   AND r.error_class IS NOT 'unscorable'
 GROUP BY coalesce(a.persona, f.owner), substr(r.created_utc, 1, 7);
@@ -116,7 +118,8 @@ CREATE VIEW score_forecast_card AS
 WITH s AS (
   SELECT coalesce(a.persona, f.owner) AS forecaster, substr(r.created_utc, 1, 7) AS month, f.p, r.outcome,
     r.error_class,
-    CASE WHEN lower(trim(f.source)) = 'backfill' OR r.error_class IS 'unscorable' THEN 0 ELSE 1 END AS scored
+    CASE WHEN lower(trim(f.source)) = 'backfill' OR r.error_class IS 'unscorable'
+      OR f.outcome_from_utc IS NULL OR f.created_utc >= f.outcome_from_utc THEN 0 ELSE 1 END AS scored
   FROM decide_forecasts_current AS f
   JOIN decide_forecast_resolutions_current AS r ON r.forecast_id = f.id
   LEFT JOIN ops_agent_runs AS a ON a.id = f.agent_run_id
@@ -139,6 +142,7 @@ CREATE VIEW decide_forecasts_overdue AS
 SELECT f.id, f.owner, f.source, f.claim, f.resolve_by_utc
 FROM decide_forecasts_current AS f
 WHERE lower(trim(f.source)) <> 'backfill'
+  AND f.outcome_from_utc IS NOT NULL AND f.created_utc < f.outcome_from_utc -- only forecasts that can be scored
   AND f.resolve_by_utc IS NOT NULL
   AND substr(f.resolve_by_utc, 1, 19) < strftime('%Y-%m-%dT%H:%M:%S', 'now')
   AND NOT EXISTS (SELECT 1 FROM decide_forecast_resolutions_current AS r WHERE r.forecast_id = f.id);

@@ -144,6 +144,7 @@ class _Response:
 
 
 def test_http_get_retries_network_errors_then_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(http.OPT_OUT_ENV, http.OPT_OUT_VALUE)  # the public repo ships no host list file
     sleeps: list[float] = []
     monkeypatch.setattr(http, "_sleep", sleeps.append)
     attempts: list[str] = []
@@ -159,6 +160,7 @@ def test_http_get_retries_network_errors_then_raises(monkeypatch: pytest.MonkeyP
 
 
 def test_http_get_4xx_not_retried_5xx_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(http.OPT_OUT_ENV, http.OPT_OUT_VALUE)  # the public repo ships no host list file
     monkeypatch.setattr(http, "_sleep", lambda s: None)
     answers: list[Any] = [
         urllib.error.HTTPError("u", 503, "busy", Message(), None),
