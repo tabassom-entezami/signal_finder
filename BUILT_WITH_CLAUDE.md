@@ -171,7 +171,8 @@ Several independent layers, so no single mistake can do harm:
 3. **Call caps.** Every agent run has a fixed budget of tool calls and time; the guard
    refuses calls past it. A limited number of agents run in parallel.
 4. **Founder approvals.** Deleting anything, or touching keys, backups or personal
-   data, is refused until the founder explicitly approves that one action.
+   data, is refused until the founder explicitly approves that one action. A delete
+   also needs proof that the data will never be needed and has been fully used.
 5. **Git belongs to the founder.** Claude only reads git. Commits, branches and pushes
    are done by hand after the founder reviews the uncommitted changes.
 6. **Untrusted input stays data.** Text fetched from the web, APIs or files is never

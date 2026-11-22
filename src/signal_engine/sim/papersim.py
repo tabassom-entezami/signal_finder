@@ -46,6 +46,9 @@ class Fees:
 
 
 # Measured Bitvavo fees, not doubled (the backtest doubles them).
+# entry = 0.10 % USDC/EUR taker fee + 1 bp conversion slippage (a EUR 10k buy on the
+# USDC-EUR book cost 1.1 bps vs mid in one snapshot, 2026-10-15 21:33 UTC; about 0.56 bps,
+# the half-spread, at our order sizes) + 0.05 % USDC taker.
 BITVAVO_FEES = Fees(entry=0.0011 + 0.0005, stop_exit=0.0025, signal_exit=0.0005)
 
 

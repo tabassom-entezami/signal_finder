@@ -120,7 +120,7 @@ Each layer stops a different failure. None is trusted alone.
 | Write guard | Read-only roles editing files; builders editing outside their area; destructive shell commands. Every tool call is checked before it runs. |
 | Call caps per task | Runaway agents. Each brief starts with its cap; the guard warns near it and refuses calls past it. Only a few agents run at once. |
 | Real security review for safety changes | The model weakening its own guards. Changes to the guard, hooks, routing, permissions or sandbox need a security review planned before the build. The guard accepts it only when the review's run record shows a finished run with a real transcript; a typed heading does not count. |
-| Founder approval | Deletions and any use of keys, backups or personal data. The guard refuses until the founder picks an approval option for that one action, after it is explained. |
+| Founder approval | Deletions and any use of keys, backups or personal data. The guard refuses until the founder picks an approval option for that one action, after it is explained. A delete also needs proof that the data will never be needed and has been fully used. |
 | Git belongs to the founder | Unreviewed changes reaching history. Claude only reads git; the founder reviews uncommitted changes and commits by hand. |
 | Untrusted input stays data | Instructions hidden in web pages, API replies, headers, file names or posts. Fetched text is never followed and never pasted into a command; suspicious text is reported. |
 | Public/private split | Leaks. The public repository is an allow-list: only the generic engine. A leak check runs on every commit and fails on internal references. |

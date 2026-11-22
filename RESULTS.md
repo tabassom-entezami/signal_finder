@@ -79,8 +79,12 @@ The last row is the lesson. A short in-sample window looked good. Seven years of
   counts, which lifts the effective number of trials to at least 14,571. At that count a new rule would need a
   Sharpe ratio above 2 to pass our deflated test on the available history, so the directional search stopped. A
   new search needs a new, dated decision.
-- **A forward prediction log now runs.** Each paper prediction is hashed before its outcome is known, then scored.
-  The first outcomes are due on 31 October 2026; nothing is claimed before 50 non-overlapping outcomes per coin.
+- **The go/no-go decision is no-go (25 October 2026).** The search found no rule worth a one-shot test. A new
+  search needs a new, dated decision.
+- **A forward prediction log now runs (from 23 October 2026).** Each paper prediction is hashed before its outcome
+  is known, then scored. It runs the failed rule above, so it tests the record, never an edge. Up to 21 November
+  2026 it has 6 days with predictions, 1 day with no decision and 24 days logged as gaps, never back-filled. The
+  first outcomes were scored on 22 November 2026; nothing is claimed before 50 non-overlapping outcomes per coin.
   These are paper predictions for research, not trading advice or signals.
 - **Online research reviewed (26 October 2026).** About 55 published studies were read in full, and every number
   we use was re-checked by a second reader. None gives a reason to reopen the search. The studies of trend rules

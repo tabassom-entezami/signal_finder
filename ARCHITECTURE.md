@@ -105,6 +105,7 @@ Each prediction in the record stores the hash of its exact input bars, its decis
 - **Live, later, follows the same rules.** The stop rests on the venue, so a position stays protected if the host dies. The trading key cannot withdraw. Any remote channel can only halt new entries or flatten, never trade, and flattening also works by hand without it. Nothing restarts trading automatically.
 - **One clock.** Every timestamp and log line is UTC from one source.
 - **Missed is visible.** A day without a decision is logged as "no decision" and never back-filled. Gaps stay gaps.
-- **Watched jobs.** Each scheduled job reports start, success and failure to an outside dead-man switch, so a hang or a sleeping host is noticed.
+- **Jobs on demand.** Jobs run only while the owner is working; nothing runs unattended. A day the log did not run is written as a gap, so a missed day stays visible.
+- **No keys on the work machine.** No exchange key is kept on the development machine. A new package version is installed only after it has been public for 7 days.
 - **Fetched text is data.** Nothing read from a feed or an API is ever run as an instruction.
 - **Simple stack.** Python with uv, pytest, ruff and strict mypy, Parquet and DuckDB, one machine. A component is built only when the step that needs it starts.

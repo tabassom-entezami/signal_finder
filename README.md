@@ -13,6 +13,10 @@ the backtest loop, the validation statistics, the point-in-time loader and the a
 the original frozen rules file, research notes, internal decision records and the owner's own account values (kept
 in `.env`) stay private; a redacted copy of the rules file is public as [M1_RULES.md](M1_RULES.md).
 
+The search for a new strategy stopped on 25 October 2026 under its own pre-set rule, and the decision is no-go.
+What runs now is forward paper work: a daily prediction log, hashed before each outcome, and two more forward
+researches runs from 30 November 2026, each frozen before its first day. Nothing is traded. See [ROADMAP.md](ROADMAP.md).
+
 **Author:** Tabassom Entezami
 
 ## Requirements
@@ -39,6 +43,9 @@ uv run python -m signal_engine fetch-ecb --start 2019-03-01 --end <date> [--data
 #   ECB EUR/USD reference rates
 uv run python -m signal_engine record-books --symbols BTC/EUR,BTC/USDC --interval 5 --start <ISO UTC> [--end <ISO UTC>]
 #   records public order books every few seconds; a failed fetch is an error row, the run continues
+uv run python -m signal_engine predict [--data-dir PATH] [--now <ISO UTC>]
+#   one run of the forward paper prediction log: each line is hashed before its outcome is known; a missed day
+#   is written as a gap line, never back-filled; needs a hashed pre-registration file of your own (ours is private)
 STAKE_USD=1000 P98_MAX_USD=100 SAVINGS_PCT=0.03 OP_EVENTS='[[0.01, 0.1, 0.5]]' \
   uv run python -m signal_engine reproduce-dev --seed 7 --out dev.json
 #   the whole first-test path (rule, backtest, gates, Monte Carlo) on synthetic bars with demo account values;
