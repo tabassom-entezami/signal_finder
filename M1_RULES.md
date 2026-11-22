@@ -141,7 +141,7 @@
 | P1 | Universe: BTC and ETH on Bitvavo. Returns, fills and stops use the EUR books (BTC-EUR, ETH-EUR, first bars 2019-03-08). Signals use USD-terms closes (EURconv). Live entries go through USDC, costed below. | [ref] | [ref] |
 | P2 | Frozen rule = §2. No search space: there are no free parameters. | [ref] | [ref] |
 | P3 | The catastrophe stop is a resting stop-market on the coin's EUR book, reset every day at 4 σ_d. For this rule it **replaces** the earlier 2 × ATR stop. | [ref] | [ref] |
-| P4 | The G1 series is the **account path A**, which models every account-layer rule that changes positions. The strategy layer S is reported, not gated. | [ref] | [ref] (backtest = live) |
+| P4 | The one-shot out-of-sample series is the **account path A**, which models every account-layer rule that changes positions. The strategy layer S is reported, not gated. | [ref] | [ref] (backtest = live) |
 | P5 | N = max(9, counted lines in the trial log). The run aborts if T5 and T6 are missing from the log. | [ref] | [ref] |
 | P6 | The earlier in-sample bar (best-of-grid ≥ 1.5 after 2× costs) is **not met** (T1: 0.43). The rule proceeds anyway under the loss-gate decision [ref], because nothing is spent and the 477-day in-sample Sharpe has a standard error of ≈ 0.87. The M1 product verdict stays separate. Flagged once [ref]. | [ref] | [ref] |
 
@@ -278,7 +278,8 @@ E_{t+1} = cash + sum_i q_i * close_{t+1};  r_{t+1} = E_{t+1} / E_t - 1    # EUR,
   - There is no result for this rule in the private task notes.
   - The fetcher's live smoke test [ref] fetched BTC-EUR candles for 2026-09-01 to 2026-10-15 but ran no rule.
   - The author loaded no BTC or ETH price after 2019-08-16.
-  
+  - Published TSMOM results cover 2019–24 (ZPB, MOP). That contamination of the hypothesis is certain and disclosed, so plan for the McLean–Pontiff haircut.
+
 ## 8. Gates (all of them; account path A unless stated; 2× costs)
 
 | # | Gate | Exact computation |
@@ -406,7 +407,7 @@ The `m1-oos` command did not exist yet when this file was frozen. This interface
 - **Survives 2× costs?** The gates are computed only at 2×, with the worst measured overshoot on every stop.
 - **Worst realistic loss?** Design bound ≈ 9 % of C0 plus the halt-gap stress. The gate is 10.2 % of C0.
 - **Does any state remove a protective stop?** No. REDUCING, FROZEN and missing-bar days keep or re-place stops.
-- **Would I trade my own money on it?** Only after G1 and 6 months of paper trading. At this stake it buys a track record, not income.
+- **Would I trade my own money on it?** Only after the one-shot out-of-sample test and 6 months of paper trading. At this stake it buys a track record, not income.
 
 ## 17. Coverage rows (for the manager)
 
