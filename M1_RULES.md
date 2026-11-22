@@ -55,6 +55,7 @@
 | 167 | private path or note |
 | 168 | private path or note, internal reference |
 | 169 | internal reference |
+| 171 | literature we read (not shared) |
 | 177 | internal reference |
 | 178 | private path or note |
 | 179 | internal reference |
@@ -278,7 +279,7 @@ E_{t+1} = cash + sum_i q_i * close_{t+1};  r_{t+1} = E_{t+1} / E_t - 1    # EUR,
   - There is no result for this rule in the private task notes.
   - The fetcher's live smoke test [ref] fetched BTC-EUR candles for 2026-09-01 to 2026-10-15 but ran no rule.
   - The author loaded no BTC or ETH price after 2019-08-16.
-  - Published TSMOM results cover 2019–24 (ZPB, MOP). That contamination of the hypothesis is certain and disclosed, so plan for the McLean–Pontiff haircut.
+  - Published results for this rule family overlap the test window; we used them only through our own summary file. That contamination is disclosed, so plan for a post-publication haircut.
 
 ## 8. Gates (all of them; account path A unless stated; 2× costs)
 

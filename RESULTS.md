@@ -111,7 +111,7 @@ The last row is the lesson. A short in-sample window looked good. Seven years of
 | Artefact | SHA-256 |
 |---|---|
 | Rules file, frozen before the run | `9352c2954a200c40413096dcacd4bda07707879a131e682dc1b50c21d5679aa0` |
-| Redacted copy of the rules file, [M1_RULES.md](M1_RULES.md) | `84ce539888fc8e790f29bebaeb39b0fd29ea009769ccf4fdea8a2ed81fce1c2f` |
+| Redacted copy of the rules file, [M1_RULES.md](M1_RULES.md) | `4a11cab5865ee3240a7e3d651131cceeaeb02252cb53ed3e3ef63f4935f1f5a3` |
 | Input data | `458a1cde7fb4608ac75e3b6b48cfd8e895d2b0f85e1457e79ca59ec44d993404` |
 | Result file, as saved | `e219bcdfca2ccf9b9f88ca84c564e8575baf69307304703a655a47293be25f21` |
 | Result content (the result JSON without its own `result_sha256` field) | `ecfac932a2547872249dead42dfa1e568aa9c7a5f13be601a6e216936c79a928` |

@@ -18,6 +18,8 @@
 !/M1_RULES.md
 !/src/
 !/tests/
+# Generic copies of our own process tools (no data, no papers)
+!/tools/
 # The verbatim report of the first out-of-sample test; the rest of docs/ stays private
 # ([s] matches the same folder and keeps the leak scanner's folder-name check quiet)
 !/docs/
