@@ -71,7 +71,6 @@ SNAPSHOT_SPACES = (
     "opcollective.eth",
     "gitcoindao.eth",
 )
-LEGAL_HOLD = ("cryptopanic", "upbit", "naver", "slowmist", "rekt")  # not fetched: terms, key or HTML only
 
 # source_id: (url, language, event_type)
 FEEDS: dict[str, tuple[str, str, str]] = {
@@ -348,8 +347,7 @@ def record_news(
     sleep = sleep or time.sleep
     unknown = [s for s in sources if s not in SOURCES]
     if unknown:
-        raise ValueError(f"unknown sources {unknown}; legal hold: {list(LEGAL_HOLD)}")
-    log.info("legal hold, not fetched", extra={"sources": list(LEGAL_HOLD)})
+        raise ValueError(f"unknown sources {unknown}; sources on legal hold are not fetched")
     result: dict[str, dict[str, int | str]] = {}
     for source in sources:
         try:

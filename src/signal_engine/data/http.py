@@ -113,7 +113,8 @@ def _check(url: str) -> None:
 
 class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
-        _check(newurl)  # a public host must not bounce us to a denied one (doi.org -> ssrn)
+        # a public host must not send us to a denied one (e.g. a DOI link redirected to a research-only host)
+        _check(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 

@@ -151,7 +151,7 @@ def test_cpcv_paths_score_the_train_best() -> None:
     assert sharpes == pytest.approx([stats.sharpe(x[:, 1])] * 5)
 
 
-# ---------------------------------------------------------------- effective number of trials (W2.6c)
+# ---------------------------------------------------------------- effective number of trials
 def _rng(seed: int = 0) -> np.random.Generator:
     return np.random.default_rng(seed)
 

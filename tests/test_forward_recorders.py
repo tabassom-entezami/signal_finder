@@ -301,7 +301,7 @@ def test_gdelt_empty_file_is_an_error(tmp_path: Path) -> None:
 
 def test_legal_hold_sources_are_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="legal hold"):
-        run_news(tmp_path, FakeGet({}), sources=("slowmist",))
+        run_news(tmp_path, FakeGet({}), sources=("held-source",))
 
 
 def test_record_news_cli_exits_1_when_any_source_failed(
