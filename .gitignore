@@ -4,6 +4,7 @@
 !/.gitignore
 !/.github/
 !/README.md
+!/LICENSE
 !/pyproject.toml
 !/uv.lock
 !/.python-version

@@ -77,6 +77,25 @@ uv run mypy src tests  # typecheck
 
 Copy `.env.example` to `.env`. Every setting is optional: `LOG_LEVEL` (default `INFO`), `DATA_DIR` (default `data`).
 
+## Data fetchers
+
+Every fetcher reads public data only, needs no account or key, and goes through one guarded client
+(`src/signal_engine/data/http.py`: host check, honest user agent, retries) or, for exchange data, ccxt built
+without credentials. Two tests (`tests/test_fetch_guards.py`) keep it that way. The repository holds no fetched
+data; check each source's own terms before you run a fetcher.
+
+The guarded client refuses every request when its host list is missing. The list is private, so to run the
+fetchers without one, set `SIGNAL_ENGINE_HOST_LIST=none` in the environment (it covers only a missing list).
+
+| Fetcher | What it reads |
+|---|---|
+| `data/bitvavo.py` | daily candles from a public exchange API |
+| `data/book_recorder.py` | public order-book snapshots from the same exchange |
+| `data/markets.py` | the exchange's public list of markets and assets |
+| `data/ecb.py` | the ECB EUR/USD reference rate |
+| `data/cot.py` | the CFTC Commitments of Traders report |
+| `data/news.py` | exchange status pages, regulator RSS feeds, a Japanese crypto-news RSS feed, a public hacks list, governance proposals, GDELT |
+
 ## More
 
 - [RESULTS.md](RESULTS.md): the first out-of-sample test, a FAIL, reported in full
@@ -86,6 +105,7 @@ Copy `.env.example` to `.env`. Every setting is optional: `LOG_LEVEL` (default `
 - [BUILT_WITH_CLAUDE.md](BUILT_WITH_CLAUDE.md): how the project is built with Claude Code
 - [AGENT_TEAM.md](AGENT_TEAM.md): the agent team by name, how they work together, their safety rules and how the owner uses them
 - [HOW_WE_WORK.md](HOW_WE_WORK.md): a real agent discussion (shortened), how findings, risks and data are kept
+- [tools/README.md](tools/README.md): small, generic copies of our own process tools (threads, run log, dates, gaps, docs)
 
 ## How this was built: an AI agent team
 
@@ -120,4 +140,7 @@ work, not what they contain.
 
 ## License
 
-All rights reserved for now: the code is public to read, but do not auto use it, at least cost you one star to repo:).
+The code is released under the MIT License (see [LICENSE](LICENSE)), holder: The signal_finder authors. The
+licence covers the code only, not the results, reports or other documents in this repository.
+
+If this helps you, a star is welcome.
