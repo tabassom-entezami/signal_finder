@@ -29,9 +29,11 @@ The range is checked before any file is read, so a locked bar never enters memor
 """
 
 import hashlib
+import importlib
 import math
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from types import ModuleType
 
 import duckdb
 import pyarrow as pa
@@ -85,6 +87,17 @@ CLOSE_COLUMNS = ("ts", "close")
 HASHED_UTC_TAG = ("#", "hashed_utc")
 FIRST_DAY_TAG = "first_day:"
 PAIRS_TAG = "pairs:"
+_extra: ModuleType | None
+try:  # Private module, not in the public repo: create your own `signal_engine/private/outside_sample.py`
+    # (PURPOSE, SHA256_FILE, COLUMNS and ok(text, source, symbol, start, end)) to add one narrow read purpose
+    _extra = importlib.import_module("signal_engine.private.outside_sample")
+except ImportError:
+    _extra = None
+# Narrow purposes added by a private module: each is pinned to its own record and checked by its own `ok`.
+EXTRA: dict[str, ModuleType] = {_extra.PURPOSE: _extra} if _extra is not None else {}
+for _name, _module in EXTRA.items():
+    SCOPE[_name] = ALL_ASSETS  # the module's `ok` narrows the pairs; the generic base-asset test never runs
+    PINNED[_name] = (_module.SHA256_FILE,)
 
 
 class LoaderLockError(PermissionError):
@@ -208,6 +221,9 @@ def is_unlocked(
     elif purpose == USDC_STRESS_PURPOSE:
         if not _usdc_stress_ok(text, source, symbol, start, end):
             return False
+    elif purpose in EXTRA:
+        if not EXTRA[purpose].ok(text, source, symbol, start, end):
+            return False
     elif symbol is not None and SCOPE[purpose] != ALL_ASSETS and base_asset(symbol) not in SCOPE[purpose]:
         return False
     if purpose == FORWARD_PURPOSE:
@@ -296,7 +312,7 @@ def load(
     for any pair or range outside the "lookback" and "venue-premium" windows.
     """
     end_ms = None if end is None else _ms(end)
-    narrow = purpose in (LOOKBACK_PURPOSE, VENUE_PURPOSE, USDC_STRESS_PURPOSE)
+    narrow = purpose in (LOOKBACK_PURPOSE, VENUE_PURPOSE, USDC_STRESS_PURPOSE) or purpose in EXTRA
     unlocked = is_unlocked(prereg_hash, purpose, sha256_file, symbol, start=start, end=end, source=source)
     if purpose == FORWARD_PURPOSE and not unlocked:
         first = forward_start(sha256_file)
@@ -330,7 +346,9 @@ def load(
     if end_ms is not None:
         where.append("ts < ?")
         params_ms.append(end_ms)
-    select = ", ".join(CLOSE_COLUMNS) if narrow else "*"  # narrow purposes never read open/high/low/volume
+    # narrow purposes never read open/high/low/volume; a private purpose reads only its own COLUMNS
+    columns = EXTRA[purpose].COLUMNS if purpose in EXTRA else CLOSE_COLUMNS
+    select = ", ".join(columns) if narrow else "*"
     sql = (
         f"SELECT {select} FROM read_parquet(?, union_by_name = true) "  # noqa: S608 (fixed fragments)
         f"WHERE {' AND '.join(where)} ORDER BY ts"
