@@ -478,6 +478,7 @@ def test_pinned_map_is_constant_and_exact() -> None:
         "forward": ("hmax-preregistration.sha256", "r2-preregistration.sha256"),
         "lookback": ("r2-preregistration.sha256",),
         "venue-premium": ("venue-premium-preregistration.sha256",),
+        "usdc-stress": ("usdc-stress-preregistration.sha256",),
     }
     assert {p.parent for v in pit.PINNED.values() for p in v} == {reports}
     assert set(pit.PINNED) == set(pit.SCOPE)
@@ -614,3 +615,111 @@ def test_venue_spec_never_opens_other_purposes(venue: Path) -> None:
             end=V_END,
             source="bitvavo",
         )
+
+
+# USDC-stress purpose: closes of a fixed pair list, narrowed by a frozen spec (Security T1 conditions 1-4).
+S_SPEC = (b"spec\nstress_threshold_abs_return: 0.05\nfirst_day: 2019-09-01\n"
+          b"pairs: bitvavo:BTC-EUR bitvavo:USDC-EUR bitvavo:BTC-USDC bitvavo:ETH-EUR\n")
+S_NOW = datetime(2019, 9, 5, 8, tzinfo=UTC)
+S_START, S_END = datetime(2019, 9, 1, tzinfo=UTC), datetime(2019, 9, 5, tzinfo=UTC)
+S_OTHERS = ("m1-oos", "predlog", "forward", "lookback", "venue-premium")
+
+
+def _spec(root: Path, text: bytes, name: str = "stress") -> Path:
+    (root / f"{name}.md").write_bytes(text)
+    sha = root / f"{name}.sha256"
+    digest = hashlib.sha256(text).hexdigest()
+    sha.write_text(f"{digest}  {name}.md\n# hashed_utc 2019-08-31T00:00:00Z (test)\n")
+    return sha
+
+
+@pytest.fixture
+def stress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    days = ["2019-08-31", "2019-09-01", "2019-09-02", "2019-09-03", "2019-09-04"]
+    for symbol in ("BTC-EUR", "USDC-EUR", "BTC-USDC", "ETH-EUR"):
+        write_partition(_bars(days), tmp_path, "bitvavo", symbol, datetime(2019, 8, 1, tzinfo=UTC))
+    monkeypatch.setitem(pit.PINNED, pit.USDC_STRESS_PURPOSE, (_spec(tmp_path, S_SPEC),))
+    monkeypatch.setattr(pit, "_now", lambda: S_NOW)
+    return tmp_path
+
+
+def _s(root: Path, symbol: str, source: str = "bitvavo", start: datetime | None = S_START,
+       end: datetime | None = S_END, sha: str = "stress.sha256",
+       purpose: str = pit.USDC_STRESS_PURPOSE) -> bool:
+    return is_unlocked(read_prereg_hash(root / sha), purpose, root / sha, symbol, start=start, end=end,
+                       source=source)
+
+
+def _s_load(root: Path, symbol: str, start: datetime | None = S_START,
+            end: datetime | None = S_END) -> pa.Table:
+    return load(root, "bitvavo", symbol, start=start, end=end,
+                prereg_hash=read_prereg_hash(root / "stress.sha256"),
+                purpose=pit.USDC_STRESS_PURPOSE, sha256_file=root / "stress.sha256")
+
+
+def test_stress_opens_both_pairs_in_range_closes_only(stress: Path) -> None:
+    for symbol in ("BTC-EUR", "USDC-EUR"):
+        table = _s_load(stress, symbol)
+        assert table.column_names == ["ts", "close"] and table.num_rows == 4
+
+
+def test_stress_refuses_other_pairs_and_sources(stress: Path) -> None:
+    assert not _s(stress, "BTC-USDC")  # listed in the spec, not in the code constant: a spec never widens it
+    assert not _s(stress, "ETH-EUR")
+    assert not _s(stress, "BTC-EUR", source="kraken")
+    with pytest.raises(LoaderLockError, match="usdc-stress"):
+        _s_load(stress, "BTC-USDC")
+
+
+def test_stress_spec_narrows_the_pairs(stress: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    narrow = _spec(stress, S_SPEC.replace(b" bitvavo:USDC-EUR", b""), "narrow")
+    monkeypatch.setitem(pit.PINNED, pit.USDC_STRESS_PURPOSE, (narrow,))
+    assert _s(stress, "BTC-EUR", sha="narrow.sha256") and not _s(stress, "USDC-EUR", sha="narrow.sha256")
+
+
+def test_stress_refuses_open_future_or_early_range(stress: Path) -> None:
+    assert _s(stress, "BTC-EUR")
+    assert not _s(stress, "BTC-EUR", end=None)
+    assert not _s(stress, "BTC-EUR", start=None)
+    assert not _s(stress, "BTC-EUR", end=S_END + timedelta(milliseconds=1))  # after the current UTC day start
+    assert not _s(stress, "BTC-EUR", start=S_START - timedelta(milliseconds=1))  # before first_day
+
+
+def test_stress_refuses_a_first_day_before_the_oos_start(
+    stress: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    early = _spec(stress, S_SPEC.replace(b"2019-09-01", b"2019-08-16"), "early")
+    monkeypatch.setitem(pit.PINNED, pit.USDC_STRESS_PURPOSE, (early,))
+    assert not _s(stress, "BTC-EUR", start=datetime(2019, 8, 16, tzinfo=UTC), sha="early.sha256")
+    assert not _s(stress, "BTC-EUR", sha="early.sha256")
+
+
+@pytest.mark.parametrize("value", [b"<T, filled before hash>", b"", b"nan", b"0"])
+def test_stress_refuses_a_placeholder_threshold(
+    stress: Path, monkeypatch: pytest.MonkeyPatch, value: bytes
+) -> None:
+    sha = _spec(stress, S_SPEC.replace(b"0.05", value), "placeholder")
+    monkeypatch.setitem(pit.PINNED, pit.USDC_STRESS_PURPOSE, (sha,))
+    assert not _s(stress, "BTC-EUR", sha="placeholder.sha256")
+
+
+def test_stress_edited_spec_refused(stress: Path) -> None:
+    (stress / "stress.md").write_bytes(S_SPEC.replace(b"0.05", b"0.04"))
+    assert not _s(stress, "BTC-EUR")
+
+
+def test_stress_record_and_other_records_cross_refused(stress: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    other = _spec(stress, S_SPEC, "other")  # the same valid text, pinned to every other purpose
+    for purpose in S_OTHERS:
+        monkeypatch.setitem(pit.PINNED, purpose, (other,))
+        assert not _s(stress, "BTC-EUR", purpose=purpose)  # its record under another purpose
+    assert _s(stress, "BTC-EUR") and not _s(stress, "BTC-EUR", sha="other.sha256")  # theirs under it
+
+
+def test_real_usdc_stress_file_unlocks() -> None:
+    sha = pit.USDC_STRESS_SHA256_FILE
+    if not sha.exists():
+        pytest.skip(f"{sha.name} is not in this copy")
+    first = datetime(2020, 12, 10, tzinfo=UTC)
+    assert is_unlocked(read_prereg_hash(sha), pit.USDC_STRESS_PURPOSE, sha, "BTC-EUR", start=first,
+                       end=pit.day_start(), source="bitvavo")

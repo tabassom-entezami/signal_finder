@@ -21,11 +21,15 @@ both given, and only once the wall clock read here has reached the forward start
 The "venue-premium" purpose opens only the closes of the (source, symbol) pairs listed in its frozen
 report spec (`pairs:` line), from the spec's `first_day:` line to the start of the current UTC day
 (wall clock read here), start and end both given.
-Under both narrow purposes the query selects `ts` and `close` only.
+The "usdc-stress" purpose opens only the code's USDC_STRESS_PAIRS that its frozen report spec also lists, from
+the spec's `first_day:` (never before the OOS start) to the start of the current UTC day, start and end both
+given, and only while the spec's `stress_threshold_abs_return:` line is a number (a placeholder opens nothing).
+Under the narrow purposes the query selects `ts` and `close` only.
 The range is checked before any file is read, so a locked bar never enters memory.
 """
 
 import hashlib
+import math
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -45,6 +49,7 @@ PREDLOG_PURPOSE = "predlog"  # the forward paper prediction log runs the frozen 
 FORWARD_PURPOSE = "forward"  # a frozen rule run forward from its hash time, every coin, post-hash days only
 LOOKBACK_PURPOSE = "lookback"  # the closes before a frozen rule's first forward day, nothing else
 VENUE_PURPOSE = "venue-premium"  # a frozen descriptive report spec (fields only, no rule), closes only
+USDC_STRESS_PURPOSE = "usdc-stress"  # a frozen report spec splitting USDC-leg costs on BTC stress days, closes only
 ALL_ASSETS = ("*",)
 # A key opens only the coins its frozen rules test: the M1 key never opens the altcoins held
 # back for the next family (they get their own purpose and hash).
@@ -54,6 +59,7 @@ SCOPE = {
     FORWARD_PURPOSE: ALL_ASSETS,
     LOOKBACK_PURPOSE: ("BTC", "ETH"),
     VENUE_PURPOSE: ("BTC", "ETH"),
+    USDC_STRESS_PURPOSE: ("BTC",),
 }
 REPORTS_DIR = Path(__file__).resolve().parents[3] / "docs" / "reports"
 PREREG_SHA256_FILE = REPORTS_DIR / "m1-preregistration.sha256"
@@ -61,6 +67,7 @@ PREDLOG_SHA256_FILE = REPORTS_DIR / "predlog-preregistration.sha256"
 HMAX_SHA256_FILE = REPORTS_DIR / "hmax-preregistration.sha256"
 R2_SHA256_FILE = REPORTS_DIR / "r2-preregistration.sha256"
 VENUE_SHA256_FILE = REPORTS_DIR / "venue-premium-preregistration.sha256"
+USDC_STRESS_SHA256_FILE = REPORTS_DIR / "usdc-stress-preregistration.sha256"
 # Each purpose opens only with its own frozen rules file(s): any other valid .md + .sha256 pair is refused.
 PINNED: dict[str, tuple[Path, ...]] = {
     PURPOSE: (PREREG_SHA256_FILE,),
@@ -68,9 +75,12 @@ PINNED: dict[str, tuple[Path, ...]] = {
     FORWARD_PURPOSE: (HMAX_SHA256_FILE, R2_SHA256_FILE),
     LOOKBACK_PURPOSE: (R2_SHA256_FILE,),
     VENUE_PURPOSE: (VENUE_SHA256_FILE,),
+    USDC_STRESS_PURPOSE: (USDC_STRESS_SHA256_FILE,),
 }
 LOOKBACK_CLOSES = 200
 LOOKBACK_PAIRS = (("bitvavo", "BTC-USDC"), ("bitvavo", "ETH-USDC"))
+USDC_STRESS_PAIRS = (("bitvavo", "BTC-EUR"), ("bitvavo", "USDC-EUR"))  # a spec can narrow this, never widen it
+THRESHOLD_TAG = "stress_threshold_abs_return:"
 CLOSE_COLUMNS = ("ts", "close")
 HASHED_UTC_TAG = ("#", "hashed_utc")
 FIRST_DAY_TAG = "first_day:"
@@ -134,7 +144,7 @@ def _spec_lines(text: Path) -> dict[str, str]:
     """`first_day:` and `pairs:` lines of a frozen report spec (the text is hash-checked by the caller)."""
     out = {}
     for line in text.read_text().splitlines():
-        for tag in (FIRST_DAY_TAG, PAIRS_TAG):
+        for tag in (FIRST_DAY_TAG, PAIRS_TAG, THRESHOLD_TAG):
             if line.startswith(tag):
                 out[tag] = line[len(tag) :].strip()
     return out
@@ -151,6 +161,23 @@ def _venue_ok(text: Path, source: str | None, symbol: str | None, start: datetim
     except ValueError:
         return False
     return (source, symbol) in pairs and _ms(first) <= _ms(start) and _ms(end) <= _ms(day_start())
+
+
+def _usdc_stress_ok(text: Path, source: str | None, symbol: str | None, start: datetime | None,
+                    end: datetime | None) -> bool:
+    if start is None or end is None:
+        return False
+    spec = _spec_lines(text)
+    pairs = {tuple(p.split(":", 1)) for p in spec.get(PAIRS_TAG, "").split() if ":" in p}
+    try:
+        threshold = float(spec.get(THRESHOLD_TAG, ""))
+        first = datetime.combine(date.fromisoformat(spec.get(FIRST_DAY_TAG, "")), datetime.min.time(), UTC)
+    except ValueError:
+        return False
+    if not math.isfinite(threshold) or threshold <= 0 or _ms(first) < _ms(OOS_START):
+        return False
+    return ((source, symbol) in pairs.intersection(USDC_STRESS_PAIRS) and _ms(first) <= _ms(start)
+            and _ms(end) <= _ms(day_start()))
 
 
 def is_unlocked(
@@ -177,6 +204,9 @@ def is_unlocked(
             return False
     elif purpose == VENUE_PURPOSE:
         if not _venue_ok(text, source, symbol, start, end):
+            return False
+    elif purpose == USDC_STRESS_PURPOSE:
+        if not _usdc_stress_ok(text, source, symbol, start, end):
             return False
     elif symbol is not None and SCOPE[purpose] != ALL_ASSETS and base_asset(symbol) not in SCOPE[purpose]:
         return False
@@ -266,7 +296,7 @@ def load(
     for any pair or range outside the "lookback" and "venue-premium" windows.
     """
     end_ms = None if end is None else _ms(end)
-    narrow = purpose in (LOOKBACK_PURPOSE, VENUE_PURPOSE)
+    narrow = purpose in (LOOKBACK_PURPOSE, VENUE_PURPOSE, USDC_STRESS_PURPOSE)
     unlocked = is_unlocked(prereg_hash, purpose, sha256_file, symbol, start=start, end=end, source=source)
     if purpose == FORWARD_PURPOSE and not unlocked:
         first = forward_start(sha256_file)
