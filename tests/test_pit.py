@@ -471,7 +471,8 @@ def test_lookback_naive_datetime_raises(lb: Path) -> None:
 # Pins: each purpose opens only with its own rules file(s).
 def test_pinned_map_is_constant_and_exact() -> None:
     reports = Path(pit.__file__).resolve().parents[3] / "docs" / "reports"
-    names = {k: tuple(p.name for p in v) for k, v in pit.PINNED.items()}
+    # a private read purpose (pit.EXTRA, absent in the public copy) is pinned in its own test
+    names = {k: tuple(p.name for p in v) for k, v in pit.PINNED.items() if k not in pit.EXTRA}
     assert names == {
         "m1-oos": ("m1-preregistration.sha256",),
         "predlog": ("predlog-preregistration.sha256",),
