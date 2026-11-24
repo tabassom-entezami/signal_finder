@@ -29,7 +29,7 @@ import numpy as np
 
 from signal_engine.backtest.engine import Bars
 from signal_engine.strategy import b_spot
-from signal_engine.validation.trials import log_trial, read_trials, verify_chain
+from signal_engine.validation.trials import log_trial, no_symlink, read_trials, verify_chain
 
 DAY_MS = 86_400_000
 VERSION = "1"
@@ -104,7 +104,7 @@ def params_sha256(table: dict[str, dict[str, str | int]]) -> str:
 def _locked(record_dir: Path) -> Iterator[None]:
     """One writer at a time for both files (`log_trial` takes its own lock on each file)."""
     record_dir.mkdir(parents=True, exist_ok=True)
-    with (record_dir / ".predlog.lock").open("a") as fh:
+    with open(record_dir / ".predlog.lock", "a", opener=no_symlink) as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)
         yield
 
@@ -120,7 +120,7 @@ def _append(record_dir: Path, body: dict[str, Any], now_ms: int) -> dict[str, An
     log_trial(record_dir / PREDICTIONS, line)
     log_trial(record_dir / COMMITMENTS, {k: line[k] for k in PUBLIC_KEYS})
     for name in (PREDICTIONS, COMMITMENTS):
-        with (record_dir / name).open("ab") as fh:
+        with open(record_dir / name, "ab", opener=no_symlink) as fh:
             os.fsync(fh.fileno())
     return line
 

@@ -3,6 +3,7 @@
 import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,13 +13,19 @@ N_FLOOR = 9  # DSR N = max(9, counted lines)
 REQUIRED = ("T1", "T2", "T3", "T4", "O1", "O2", "O3", "T5", "T6")
 
 
+def no_symlink(path: str, flags: int) -> int:
+    """Opener for `open(..., opener=no_symlink)`: a symlink as the last path part fails (ELOOP), so a link
+    planted in `data/` cannot redirect a record write to another file (daily jobs run outside the sandbox)."""
+    return os.open(path, flags | os.O_NOFOLLOW, 0o666)
+
+
 def log_trial(path: Path, trial: dict[str, Any]) -> None:
     """Append one trial line; existing lines are never rewritten. The line carries `prev_sha256`, the sha256
     of every byte before it, so a later edit of any earlier line (chained or not) breaks `verify_chain`."""
     if not trial.get("id"):
         raise ValueError("a trial needs an id")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+b") as fh:
+    with open(path, "a+b", opener=no_symlink) as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)  # a second writer waits, so it hashes the bytes the first one wrote
         fh.seek(0)
         before = fh.read()

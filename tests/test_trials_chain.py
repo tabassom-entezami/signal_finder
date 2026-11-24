@@ -44,3 +44,13 @@ def test_a_log_without_a_final_newline_is_refused(tmp_path: Path) -> None:
     log.write_text(json.dumps({"id": "T1"}), encoding="utf-8")
     with pytest.raises(ValueError, match="newline"):
         log_trial(log, {"id": "T2"})
+
+
+def test_log_trial_refuses_a_symlinked_log_and_leaves_its_target_alone(tmp_path: Path) -> None:
+    target = tmp_path / "elsewhere.txt"
+    target.write_text("keep\n", encoding="utf-8")
+    log = tmp_path / "trials.jsonl"
+    log.symlink_to(target)  # a link planted where the log should be
+    with pytest.raises(OSError):
+        log_trial(log, {"id": "T1", "daily_sharpe": 0.01})
+    assert target.read_text(encoding="utf-8") == "keep\n"

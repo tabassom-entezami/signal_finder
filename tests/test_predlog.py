@@ -269,3 +269,12 @@ def test_git_head_marks_a_dirty_tree(status: str, want: str, monkeypatch: pytest
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     assert cli._git_head() == want  # a stamp never claims a commit the tree does not match
+
+
+def test_record_lock_refuses_a_symlink_and_leaves_its_target_alone(tmp_path: Path) -> None:
+    target = tmp_path / "elsewhere.txt"
+    target.write_text("keep\n", encoding="utf-8")
+    (tmp_path / ".predlog.lock").symlink_to(target)
+    with pytest.raises(OSError), predlog._locked(tmp_path):
+        pass
+    assert target.read_text(encoding="utf-8") == "keep\n"
