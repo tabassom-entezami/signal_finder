@@ -96,6 +96,39 @@ fetchers without one, set `SIGNAL_ENGINE_HOST_LIST=none` in the environment (it 
 | `data/cot.py` | the CFTC Commitments of Traders report |
 | `data/news.py` | exchange status pages, regulator RSS feeds, a Japanese crypto-news RSS feed, a public hacks list, governance proposals, GDELT |
 
+## Common questions
+
+**Is there a reproducible, out-of-sample backtest?** Yes. The backtest loop is
+[`backtest/engine.py`](src/signal_engine/backtest/engine.py); `reproduce-dev` runs the whole path on synthetic bars
+and must match the hash in [`tests/golden/`](tests/golden/reproduce_dev_seed7.json). The real test ran once on 7
+years of unseen data, with the rules hashed before the run, and was gated on the deflated Sharpe ratio (adjusted
+for the number of trials) and the probability of backtest overfitting ([RESULTS.md](RESULTS.md),
+[`validation/stats.py`](src/signal_engine/validation/stats.py)).
+
+**Are fees and slippage realistic?** Costs are 2 × the measured costs. Measured fees are in
+[`sim/papersim.py`](src/signal_engine/sim/papersim.py), order-book fills in
+[`sim/books.py`](src/signal_engine/sim/books.py), and stop exits include the worst measured slippage
+([M1_RULES.md](M1_RULES.md)). Funding rates do not apply: the rule is spot and long-only.
+
+**Which metrics are reported?** Sharpe ratio, maximum drawdown, profit factor, win rate against the break-even win
+rate, time in the market and Sharpe by period, at 1 ×, 2 × and 3 × costs ([RESULTS.md](RESULTS.md)).
+
+**Are there stops and position sizing?** Yes. Positions are sized to a 20 % yearly volatility target, each
+position has a resting stop at 4 × daily volatility (an ATR-style stop), and account-level loss limits sit on top
+([`strategy/b_spot.py`](src/signal_engine/strategy/b_spot.py), [M1_RULES.md](M1_RULES.md)). There are no
+take-profit tiers: they would be a new rule, and the search for new rules has stopped (see RESULTS.md).
+
+**How are duplicate signals avoided?** Decisions are made once a day on the daily close, a rerun on the same UTC
+day writes nothing, and a 10 % rebalance band stops the position from flipping back and forth near a threshold
+([`record/predlog.py`](src/signal_engine/record/predlog.py), `next_weight` in
+[`strategy/b_spot.py`](src/signal_engine/strategy/b_spot.py)).
+
+**Is each signal's input and outcome logged?** Yes. Each prediction stores a hash of its exact input bars and is
+hashed before its outcome is known; the outcome is scored later and a missed day is written as a gap, never
+back-filled ([`record/predlog.py`](src/signal_engine/record/predlog.py)).
+
+These are research data predictions for our research, not trading advice or signals.
+
 ## More
 
 - [RESULTS.md](RESULTS.md): the first out-of-sample test, a FAIL, reported in full
