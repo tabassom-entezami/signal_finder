@@ -82,9 +82,9 @@ A worked example. The founder asks: "Which storage should a new data job use?"
 
 1. **Use what exists first.** The team manager role checks the project's own research database, earlier discussions and the decision record. If one query or one existing, verified answer settles it, no agent is started.
 2. **Small items skip the round.** Doc fixes (wording, status lines, corrections to the project's own files, applying a checker's exact text) and single-file test fixes are done directly by the manager, then tested and logged. Checkers stay for results anyone acts on and for safety: control files, keys, network access, deletions and public text. The rule was added after one working session in which most agent runs went to such small items.
-3. **Ask the owners.** Otherwise the manager picks the two or three roles that own the topic (here: the architect, the data engineer, the quality engineer). A small routing hook suggests them from the words of the question. Each gets a short brief: the question, the facts already found with their source, two or three options, and a fixed budget of tool calls.
+3. **Ask the owner.** Otherwise the manager asks the one role that owns the topic, and two or three only when the question crosses money, keys, the public repo, legal or privacy, or the safety controls (here: the architect, the data engineer, the quality engineer). Measured before this rule: about 6 % of opinion runs changed an outcome, against about 21 % of checker runs, so the extra opinions were cut and the checkers kept. A small routing hook suggests the owner from the words of the question. Each gets a short brief: the question, the facts already found with their source, two or three options, and a fixed budget of tool calls.
 4. **One shared thread.** Every role writes its opinion into the same discussion file: a choice, why, the risk, and what would change its mind. Nobody edits another's section. A real, shortened thread is in [HOW_WE_WORK.md](HOW_WE_WORK.md).
-5. **Replies by name.** In the next round each role reads the whole thread and answers the others by name: "Architect: agree, but…", "Data engineer: disagree, because the measured size is…". A role that needs something from another writes a question addressed to that role; the thread is not complete until that role has written the answer. The next-round prompt is fixed text, so the manager cannot steer the answer with its own summary.
+5. **Replies by name.** In the next round each role reads the whole thread and answers the others by name: "Architect: agree, but…", "Data engineer: disagree, because the measured size is…". A role that needs something from another writes a question addressed to that role; the thread is not complete until that role has written the answer. Only such an explicit question owes an answer: naming a role in passing does not. The next-round prompt is fixed text, so the manager cannot steer the answer with its own summary.
 6. **Round limit.** Each role gets at most four replies. Then the manager closes the thread and records every open question as carried to a named owner or to the founder. Discussions that can be reopened forever never converge.
 7. **Independent check.** A role that wrote nothing in the thread re-runs the measured claims on the real data, using a different method than the author: parse the file instead of searching its text, query the table instead of counting files, recompute instead of re-reading. A re-run by the author's own method counts as unverified, not confirmed. A tool refuses a checker section that does not state its method.
 8. **Decision record.** Only after the check passes is the decision written down: the question, each role's choice in one line, the choice, why, the evidence grade, the owner and what would make the team revisit it. Disagreements are settled by evidence: measured beats primary source beats secondary, newer beats older.
@@ -101,7 +101,7 @@ A worked example. The founder asks: "Which storage should a new data job use?"
  small doc or test fix? --yes--> manager fixes, tests, logs
     | no
     v
- 2-3 owner roles -> one thread -> replies by name (max 4 each)
+ 1 owner role(*) -> one thread -> replies by name (max 4 each)
     |                               ^       |
     |                questions to a role ---+
     v
@@ -112,6 +112,8 @@ A worked example. The founder asks: "Which storage should a new data job use?"
     |
     v
  approved plan -> build -> fresh-context review -> founder commits
+
+ (*) 2-3 roles when the question crosses money, keys, the public repo, legal or the safety controls
 ```
 
 ## Safety

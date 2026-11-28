@@ -155,7 +155,7 @@ with one role and a written standard to work to:
 
 How work gets decided:
 
-1. The specialists related to a question each write an opinion into one shared discussion.
+1. The specialist who owns the question writes an opinion into one shared discussion (two or three specialists when it crosses money, keys, the public repo, legal or the safety controls).
 2. They read each other and reply by name: agree, disagree with evidence, or merge proposals.
 3. A checker who did not write the claims re-checks them on real data, using a different method from the authors.
 4. Only then is a decision recorded and built. Values, legal judgement and money stay with the founder.
